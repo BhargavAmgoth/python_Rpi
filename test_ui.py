@@ -76,7 +76,7 @@ def call_booking(call_type, floor_name, checked):
                 send_lop_to_shaft(floor)
             else:
                 lops_shaft[floor][2] = 0x00  # Reset other floors
-                print(f"Updated lops_shaft floor zero [{floor}]: ", end="")
+                print(f"Updated lops_shaft floor [{floor}]: ", end="")
                 print(" ".join(f"0x{byte:02x}" for byte in lops_shaft[floor]))
 
     elif call_type == "COP":      
@@ -113,14 +113,14 @@ def run_websocket_client(url, client_name):
             #data_recived = b''
             data_recived = list(message)
             #data_recived = [hex(bytess) for bytess in message]
-            #shaft_broad_cast = [hex(bytess) for bytess in message]
+            shaft_broad_cast = [hex(bytess) for bytess in message]
             data_recived = np.array(data_recived, dtype=np.int8)
             #connect_error_panel = pyqtSignal(bytearray)
-            afterRecived()
-            print("Received message from : ", data_recived)
+          
+            print("BroadcasT from shaft in INT: ", data_recived)
+            print("BroadcasT from shaft in HEX: ", shaft_broad_cast)
             send_shaft_data(ws)
-    def afterRecived():
-        connect_error_panel.emit(data_recived)
+    
     def on_error(ws, error):
         print(f"{client_name} encountered error: {error}")
 
@@ -162,8 +162,6 @@ class LiftControlUI(QWidget):
         # Main layout for both panels
         main_layout = QHBoxLayout()
         
-        self.web_shaft_error_conecter = self.afterRecived()
-        self.web_shaft_error_conecter.connect_error_panel.connect(self.create_error_panel)
        # def run_websocket_client(url, client_name):
    # def on_message(ws, message):
         # Create LOP and COP panels
@@ -178,6 +176,52 @@ class LiftControlUI(QWidget):
         main_layout.addWidget(Error_panel)
         self.setLayout(main_layout)
 
+
+    '''    
+    def create_lop_panel(self):
+        # Create a group box for the LOP Panel
+        lop_box = QGroupBox("LOP PANEL")
+        lop_layout = QVBoxLayout()
+
+        # Create buttons for LOP Panel
+        lop_buttons = [
+            [ "Ground Floor", "First Floor", "Second Floor", "Third Floor"],
+            ["DoorSwitch", "Solenoid", "ML Open", "ML Close", "ML Semi"]
+        ]
+        type = "LOP"
+
+        # Loop through each floor (Ground Floor, First Floor, etc.)
+        for lop in range(len(lop_buttons[0])):
+            # Create the button for the floor
+            floor_button = QPushButton(lop_buttons[0][lop])
+            floor_button.setStyleSheet(self.toggle_button_style())
+            floor_button.setCheckable(True)
+            floor_button.toggled.connect(lambda checked, btn=lop: self.on_toggle_button(type, btn, checked))
+            lop_layout.addWidget(floor_button)
+            button = QPushButton(lop_buttons[0][lop])
+            button.setStyleSheet(self.toggle_button_style())
+            button.setCheckable(True)
+            button.toggled.connect(lambda checked, btn=lop_buttons[0][lop]: self.on_toggle_button(type,btn, checked))
+            lop_layout.addWidget(button)
+            # Create a grid layout for the lock buttons under each floor button
+            grid_layout = QGridLayout()
+            button_number = 0
+            for lock_index in range(len(lop_buttons[1])):
+                lock_button = QPushButton(str(lop) + " " + lop_buttons[1][lock_index])
+                lock_button.setStyleSheet(self.color_button_style())
+                lock_button.clicked.connect(lambda _, type="ML", num=lop: self.rgb_ml_color_button(type, num))
+                grid_layout.addWidget(lock_button, lock_index // 3, lock_index % 3)  # Arrange in a grid (2 columns)
+                button_number+1
+            # Add the grid layout under the floor button
+            lop_layout.addLayout(grid_layout)
+
+        lop_box.setLayout(lop_layout)
+        lop_box.setStyleSheet(self.panel_style())
+        return lop_box
+
+
+    
+    '''
     def create_lop_panel(self):
         # Create a group box for the LOP Panel
         lop_box = QGroupBox("LOP PANEL")
@@ -187,34 +231,32 @@ class LiftControlUI(QWidget):
         # Create buttons for LOP Panel
         lop_buttons = [
             "Ground Floor", "First Floor", "Second Floor",
-            "Third Floor", "Solenoid",
-            "Door Switch", "Mechanical Lock"
+            "Third Floor"
         ]
-        ml_states = [ "ML Open", "ML Close", "ML Semi"]
+        ml_states = ["DS On","DS Off", "DL On", "DL Off", "ML Open", "ML Close", "ML Semi"]
 
         type = "LOP"
-        for btn_text in lop_buttons:
-            if btn_text == "Mechanical Lock" :
-                button_number = 0
-                for row in range(3):  # 3 rows
-                    color_button = QPushButton(ml_states[row] + " " + str(button_number))
-                    color_button.setStyleSheet(self.color_button_style())
-                    #color_button.clicked.connect(lambda checked, num=button_number: self.on_button_click(num))
-                    color_button.clicked.connect(lambda _, type="ML", num=button_number: self.rgb_ml_color_button(type, num))
-                    grid_layout.addWidget(color_button, row, 1)
-                    button_number += 1
-                lop_layout.addLayout(grid_layout)
-            else :
-                button = QPushButton(btn_text)
-                button.setStyleSheet(self.toggle_button_style())
-                button.setCheckable(True)
-                button.toggled.connect(lambda checked, btn=btn_text: self.on_toggle_button(type,btn, checked))
-                lop_layout.addWidget(button)
 
+        for lop in range(len(lop_buttons)):
+            button = QPushButton(lop_buttons[lop])
+            button.setStyleSheet(self.toggle_button_style())
+            button.setCheckable(True)
+            button.toggled.connect(lambda checked, btn=lop_buttons[lop]: self.on_toggle_button(type,btn, checked))
+            lop_layout.addWidget(button)
+            
+            grid_layout = QGridLayout()
+            for lock_index in range(len(ml_states)):
+                lock_button = QPushButton(ml_states[lock_index])
+                lock_button.setStyleSheet(self.color_button_style())
+                lock_button.clicked.connect(lambda _, type="ML", btn=ml_states[lock_index], btn_num=lock_index, floor=lop: self.lop_data_button(type, btn, floor))
+                grid_layout.addWidget(lock_button, lock_index // 4, lock_index % 4)  # Arrange in a grid (2 columns)
+
+            # Add the grid layout under the floor button
+            lop_layout.addLayout(grid_layout)
         lop_box.setLayout(lop_layout)
         lop_box.setStyleSheet(self.panel_style())
         return lop_box
-
+    
     def create_cop_panel(self):
         # Create a group box for the COP Panel
         cop_box = QGroupBox("COP PANEL")
@@ -256,7 +298,7 @@ class LiftControlUI(QWidget):
                         color_button = QPushButton(str(rgb_color_name[row][col]))
                         color_button.setStyleSheet(self.color_button_style())
                         #color_button.clicked.connect(lambda checked, num=button_number: self.on_button_click(num))
-                        color_button.clicked.connect(lambda _, type="RGB", num=button_number: self.rgb_ml_color_button(type, num))
+                        color_button.clicked.connect(lambda _, type="RGB", num=button_number: self.rgb_color_button(type, num))
                         grid_layout.addWidget(color_button, row, col)
                         button_number += 1
                 cop_layout.addLayout(grid_layout) 
@@ -364,12 +406,32 @@ class LiftControlUI(QWidget):
         dialog.setLayout(error_layout)
         dialog.exec()
 
-    def rgb_ml_color_button(self, type, num):
+    def rgb_color_button(self, type, num):
         if(type == "RGB") :
             RGB_android_cabin_dataC[4] = num
         elif(type == "ML") :
             print(f"Buttons {num} clicked!")
 
+    def lop_data_button(self, type, btn, floor):   #ml_states = ["Door Switch", "Solenoid", "ML Open", "ML Close", "ML Semi"]
+
+        #print(" ".join(f"0x{byte:02x}" for byte in lops_shaft[floor]))
+        if(type == "ML") :
+            if(btn == "DS On") :
+                lops_shaft[floor][4] = 1
+            elif(btn == "DS Off") :
+                lops_shaft[floor][4] = 0
+            elif(btn == "ML Open") :
+                lops_shaft[floor][5] = 1
+            elif(btn == "ML Close") :
+                lops_shaft[floor][5] = 0
+            elif(btn == "ML Semi") :
+                lops_shaft[floor][5] = 2
+            elif(btn == "DL On") :
+                lops_shaft[floor][6] = 1
+            elif(btn == "DL Off") :
+                lops_shaft[floor][6] = 0
+            print(f"Floor {floor} {btn} Button clicked!")
+            #print(" ".join(f"0x{byte:02x}" for byte in lops_shaft[floor]))
 
     def on_button_click(self, button_number):
         RGB_android_cabin_dataC[4] = button_number
@@ -520,10 +582,10 @@ def udp_to_websocket():
 def send_cabin_data(ws):
    # np.array_equal()
     
-    ws.send(LL_android_cabin_data)
-    ws.send(RGB_android_cabin_dataC)
-    ws.send(FanDatatoCab)
-    print("Data Sent to cabin")
+    #ws.send(LL_android_cabin_data)
+    #ws.send(RGB_android_cabin_dataC)
+    #ws.send(FanDatatoCab)
+    #print("Data Sent to cabin")
     print("cabnf" + " ".join(f",0x{byte:02x}" for byte in RGB_android_cabin_dataC))
 
 def send_shaft_data(ws):
