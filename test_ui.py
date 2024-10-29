@@ -31,8 +31,8 @@ Broadcast_form_shaft = [0x60 ,0x00 ,0x00 ,0x00 ,0xdf ,0x00 ,0x00 ,0x00 ,0x00 ,0x
 lops_shaft = [
     bytearray([0x55, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x01, 0x00, 0xff]),  #Head, lop_flor, calBok_stat, cabin_flor, Door_sensor, ML, D_solenoid, update, foot 
     bytearray([0x55, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x01, 0x00, 0xff]),
-    #bytearray([0x55, 0x02, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0xff]),
-    #bytearray([0x55, 0x03, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0xff])
+    bytearray([0x55, 0x02, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0xff]),
+    bytearray([0x55, 0x03, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0xff])
 ]
 cabin_data_list = bytearray([0xd5, 0x00, 0x00, 0x00, 0x00, 0x64, 0x00, 0x00, 0x00, 0xff])  #Header, Call booking, Siren & downtime, CL, Emg, Battery, contact charger, LL, update, footer (Totle floors count, LaFLiLo PWM, Update status, Footer)
 
@@ -527,9 +527,9 @@ class LiftControlUI(QWidget):
         #print(" ".join(f"0x{byte:02x}" for byte in lops_shaft[floor]))
         if(type == "ML") :
             if(btn == "DS On") :
-                lops_shaft[floor][4] = 1
-            elif(btn == "DS Off") :
                 lops_shaft[floor][4] = 0
+            elif(btn == "DS Off") :
+                lops_shaft[floor][4] = 1
             elif(btn == "ML Open") :
                 lops_shaft[floor][5] = 1
             elif(btn == "ML Close") :
@@ -703,16 +703,16 @@ def udp_to_websocket():
 def send_cabin_data(ws):
    # np.array_equal()
     
-    #ws.send(LL_android_cabin_data)
-    #ws.send(RGB_android_cabin_dataC)
-    #ws.send(FanDatatoCab)
-    #print("Data Sent to cabin")
+    ws.send(LL_android_cabin_data)
+    ws.send(RGB_android_cabin_dataC)
+    ws.send(FanDatatoCab)
+    print("Data Sent to cabin")
     print("cabnf" + " ".join(f",0x{byte:02x}" for byte in RGB_android_cabin_dataC))
 
 def send_shaft_data(ws):
     
-    for lop in lops_shaft:
-        ws.send(lop)
+    for lop in range(2):
+        ws.send(lops_shaft[lop])
         print("Data lop to Shaft")
     ws.send(cabin_data_list)
     print("Data cabin to Shaft")
