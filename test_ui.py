@@ -16,6 +16,9 @@ from datetime import datetime
 
 import ctypes
 
+wifi_cabin = None
+wifi_shaft = None
+
 # Constants for multicast group
 MCAST_GRP = '239.1.2.3'
 MCAST_PORT = 2323
@@ -73,14 +76,19 @@ def call_booking(call_type, floor_name, checked):
     if call_type == "LOP":
         for floor in range(len(lops_shaft)):
             if floor == floor_number and checked:
-                lops_shaft[floor][2] = 0x01  # Set the specific floor active
-                print(f"Updated lops_shaft floor one [{floor}]: ", end="")
-                print(" ".join(f"0x{byte:02x}" for byte in lops_shaft[floor]))
+                #lops_shaft[floor][2] = 0x01  # Set the specific floor active
+                data = lops_shaft
+                data[2] = 0x01
+                if wifi_shaft != None:
+                    pass
+                    #wifi_shaft.send(data)
+                print(f"............................Updated lops_shaft floor one [{floor}]: ", end="")
+                print(" ".join(f"0x{byte:02x}" for byte in data[floor]))
                 send_lop_to_shaft(floor)
-            else:
-                lops_shaft[floor][2] = 0x00  # Reset other floors
-                print(f"Updated lops_shaft floor [{floor}]: ", end="")
-                print(" ".join(f"0x{byte:02x}" for byte in lops_shaft[floor]))
+            #else:
+                #lops_shaft[floor][2] = 0x00  # Reset other floors
+                #print(f"Updated lops_shaft floor [{floor}]: ", end="")
+                #print(" ".join(f"0x{byte:02x}" for byte in lops_shaft[floor]))
 
     elif call_type == "COP":      
         if 0 <= floor_number <= len(lops_shaft)+1 and checked:
@@ -125,7 +133,8 @@ def run_websocket_client(url, client_name):
           
             print("BroadcasT from shaft in INT: ", data_recived)
             print("BroadcasT from shaft in HEX: ", shaft_broad_cast)
-            shaft_brodcast_updater(window2)
+            
+            shaft_brodcast_updater()
             send_shaft_data(ws)
     
     def on_error(ws, error):
@@ -140,10 +149,12 @@ def run_websocket_client(url, client_name):
         print(f"{client_name} connection closed with code: {close_status_code}, message: {close_msg}")
 
     def on_open(ws):
-        global shaft_connectivity_flag, cabin_connectivity_flag
+        global shaft_connectivity_flag, cabin_connectivity_flag,wifi_shaft,wifi_cabin
         if client_name == "shaft":
+            wifi_shaft = ws
             shaft_connectivity_flag = True
         elif client_name == "cabin":
+            wifi_cabin = ws
             cabin_connectivity_flag = True
         print(f"{client_name} connection opened")
 
@@ -159,10 +170,11 @@ def run_websocket_client(url, client_name):
     # Running the WebSocket client
     ws.run_forever()
 
-def shaft_brodcast_updater(LiftControlUI):
+def shaft_brodcast_updater():
     global shaft_broad_cast
+    global window2
     #print("The updater  ....................................................",shaft_broad_cast)
-    LiftControlUI.check_update_brodcast_error(shaft_broad_cast)
+    window2.check_update_brodcast_error(shaft_broad_cast)
     #return shaft_broad_cast
 
 class LiftControlUI(QWidget):
@@ -199,7 +211,7 @@ class LiftControlUI(QWidget):
         lop_box = QGroupBox("LOP PANEL")
         lop_layout = QVBoxLayout()
         grid_layout = QGridLayout()
-
+        global prev_err_state
         # Create buttons for LOP Panel
         lop_buttons = [
             "Ground Floor", "First Floor", "Second Floor",
@@ -255,7 +267,7 @@ class LiftControlUI(QWidget):
                 button.setCheckable(True)
                 button.toggled.connect(lambda checked, btn=btn_text: self.on_toggle_button(type,btn, checked))
                 cop_layout.addWidget(button)
-
+                
                 light_label = QLabel("Light Control")
                 light_slider = QSlider(Qt.Orientation.Horizontal)
                 light_slider.setRange(0, 100)
@@ -269,8 +281,8 @@ class LiftControlUI(QWidget):
                     for col in range(len(rgb_color_name[row])):  # 4 columns
                         color_button = QPushButton(str(rgb_color_name[row][col]))
                         color_button.setStyleSheet(self.color_button_style())
-                        #color_button.clicked.connect(lambda checked, num=button_number: self.on_button_click(num))
-                        color_button.clicked.connect(lambda _, type="RGB", num=button_number: self.rgb_color_button(type, num))
+                        #color_button.ontoggle.connect(lambda checked, num=button_number: self.on_button_click(num))
+                        color_button.toggled.connect(lambda _, type="RGB", num=button_number: self.rgb_color_button(type, num))
                         grid_layout.addWidget(color_button, row, col)
                         button_number += 1
                 cop_layout.addLayout(grid_layout) 
@@ -324,16 +336,16 @@ class LiftControlUI(QWidget):
         print("Mesagee",data)
         #if "WF" in self.error_buttons:
         global prev_err_state
-        lst_err = prev_err_state 
+       
         errors = self.error_buttons
-        print("Prefv error state ............  ",type(lst_err), lst_err)
+        print("Prefv error state ...............................  ",type(prev_err_state), prev_err_state)
         if len(data) == 16 and data[0] == "0x60" and data[-1] == "0xff": #QPushButton { background-color: green; color: white;font-size: 16px; border-radius: 10px;padding: 10px; }"""
             print(type(data[3]), " " ,data[3])
             if data[3] == "0xaf" :
                 if prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
                     button.setStyleSheet(f"background-color: red; color: white;")
-                prev_err_state == "NF"
+                prev_err_state = None
                 print("Prefv error state  in None  ",type(prev_err_state), prev_err_state)
                 print("No error")
             elif data[3] == "0x0":  #Door Lock error
@@ -344,7 +356,7 @@ class LiftControlUI(QWidget):
                 print("Door Lock error")
                 button = self.error_buttons["DL"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
-                prev_err_state == "DL"
+                prev_err_state = "DL"
                 print("Prefv error state  in Door  ",type(prev_err_state), prev_err_state)
 
             elif data[3] == "0x1":  #Mech Lock error
@@ -353,98 +365,98 @@ class LiftControlUI(QWidget):
                     button.setStyleSheet(f"background-color: red; color: white;")
                 button = self.error_buttons["ML"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
-                prev_err_state == "ML"
+                prev_err_state = "ML"
             elif data[3] == "0x2":  #Mech Lock error
                 if prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
                     button.setStyleSheet(f"background-color: red; color: white;")
                 button = self.error_buttons["WF"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
-                prev_err_state == "WF"
+                prev_err_state = "WF"
             elif data[3] == "0x3":  #Mech Lock error
                 if prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
                     button.setStyleSheet(f"background-color: red; color: white;")
                 button = self.error_buttons["WF"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
-                prev_err_state == "WF"
+                prev_err_state = "WF"
             elif data[3] == "0x4":  #Lidar Lock error
                 if prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
                     button.setStyleSheet(f"background-color: red; color: white;")
                 button = self.error_buttons["LR"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
-                prev_err_state == "LR"
+                prev_err_state = "LR"
             elif data[3] == "0x5":  #Over Load error from device
                 if prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
                     button.setStyleSheet(f"background-color: red; color: white;")
                 button = self.error_buttons["OD"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
-                prev_err_state == "OD"
+                prev_err_state = "OD"
             elif data[3] == "0x6":  #Over Load error from user
                 if prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
                     button.setStyleSheet(f"background-color: red; color: white;")
                 button = self.error_buttons["OU"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
-                prev_err_state == "OU"
+                prev_err_state = "OU"
             elif data[3] == "0x7":  #Power error
                 if prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
                     button.setStyleSheet(f"background-color: red; color: white;")
                 button = self.error_buttons["PF"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
-                prev_err_state == "PF"
+                prev_err_state = "PF"
             elif data[3] == "0x8":  #Cabin out of range
                 if prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
                     button.setStyleSheet(f"background-color: red; color: white;")
                 button = self.error_buttons["CO"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
-                prev_err_state == "CO"
+                prev_err_state = "CO"
             elif data[3] == "0xA":  #Cabin Not available
                 if prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
                     button.setStyleSheet(f"background-color: red; color: white;")
                 button = self.error_buttons["CN"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
-                prev_err_state == "CN"
+                prev_err_state = "CN"
             elif data[3] == "0xC":  #Child Lock error
                 if prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
                     button.setStyleSheet(f"background-color: red; color: white;")
                 button = self.error_buttons["CL"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
-                prev_err_state == "CL"
+                prev_err_state = "CL"
             elif data[3] == "0xE":  #Parental Lock error
                 if prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
                     button.setStyleSheet(f"background-color: red; color: white;")
                 button = self.error_buttons["PL"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
-                prev_err_state == "PL"
+                prev_err_state = "PL"
             elif data[3] == "0xF":  #Light Curtain error
                 if prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
                     button.setStyleSheet(f"background-color: red; color: white;")
                 button = self.error_buttons["LC"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
-                prev_err_state == "LC"
+                prev_err_state = "LC"
             elif data[3] == "0x10":  #Over Speed error
                 if prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
                     button.setStyleSheet(f"background-color: red; color: white;")
                 button = self.error_buttons["OS"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
-                prev_err_state == "OS"
+                prev_err_state = "OS"
             elif data[3] == "0x11":  #Device Under Update 
                 if prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
                     button.setStyleSheet(f"background-color: red; color: white;")
                 button = self.error_buttons["OTA"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
-                prev_err_state == "OTA"
+                prev_err_state = "OTA"
         #print(" ".join(f"0x{byte:02x}" for byte in data))
     
 
@@ -469,6 +481,7 @@ class LiftControlUI(QWidget):
             #lock_button.clicked.connect(lambda _, type="ML", btn=shaft_buttons[lock_index], btn_num=lock_index, floor=lop: self.lop_data_button(type, btn, floor))
 
             grid_layout.addWidget(err_button, type_index // 3, type_index % 3)  # Arrange in a grid (2 columns)
+            print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@Storing the data 111")
             self.error_buttons[err_name] = err_button
         '''
         for row in range(len(shaft_buttons1)):
@@ -570,6 +583,13 @@ class LiftControlUI(QWidget):
             elif checked == True :
                 RGB_android_cabin_dataC[2] = 0x10
                 RGB_android_cabin_dataC[3] = 50
+        if button_name == "RGB Sync" and type == "COP":
+            print("Sync is ", checked)
+            if  checked == True:
+                RGB_android_cabin_dataC[7] = 0x02
+                RGB_android_cabin_dataC[3] = 50
+
+                
         if button_name == "Child Lock" and type == "COP": 
             if  checked == False:
                 RGB_android_cabin_dataC[2] = 0
@@ -592,8 +612,7 @@ class LiftControlUI(QWidget):
         print(f"{button_name} toggled {'ON' if checked else 'OFF'}")
         self.sender().setStyleSheet(f"background-color: {color}; color: white; border-radius: 10px; padding: 10px;font-weight: bold; ")
 
-    def on_slider_change(self, slider_name, value):
-        
+    def on_slider_change(self, slider_name, value):    
         print(f"{slider_name} slider set to {value}")
         if(slider_name == "Light") :
             RGB_android_cabin_dataC[3] = value
