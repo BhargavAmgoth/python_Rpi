@@ -13,11 +13,9 @@ from PyQt6.QtGui import QColor
 
 import websocket
 from datetime import datetime
-
+import time
 import ctypes
-
-wifi_cabin = None
-wifi_shaft = None
+import random
 
 # Constants for multicast group
 MCAST_GRP = '239.1.2.3'
@@ -28,17 +26,23 @@ cabin_connectivity_flag = False
 # Data lists
 Broadcast_form_shaft = [0x60 ,0x00 ,0x00 ,0x00 ,0xdf ,0x00 ,0x00 ,0x00 ,0x00 ,0x03 ,0x05 ,0x00 ,0x00 ,0x80 ,0x07 ,0xff]
 #Header, CabinCurrentFloor(A), Booking(L), ErrorStatus(A), CS, LDR Val, LL/Lop Floor num, Booking(cabin), DL status(L), DorSwitch(cabin), ML, SOS status, Ev state, DA, NeworkAvailability, Footer
+#0x60 ,0x00 ,0x00 ,0xaf ,0xdf ,0x00 ,0x00 ,0x00 ,0x00 ,0x03 ,0x0a ,0x00 ,0x00 ,0x01 ,0x07 ,0xff
+cabin_to_shaft = [0x25, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff]
 
 
+
+#websocket objects 
+wifi_cabin = None
+wifi_shaft = None
 
 lops_shaft = [
-    bytearray([0x55, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x01, 0x00, 0xff]),  #Head, lop_flor, calBok_stat, cabin_flor, Door_sensor, ML, D_solenoid, update, foot 
-    bytearray([0x55, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x01, 0x00, 0xff]),
-    bytearray([0x55, 0x02, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0xff]),
-    bytearray([0x55, 0x03, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0xff])
+    bytearray([0x55, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0xff]),  #Head, lop_flor, calBok_stat, cabin_flor, Door_sensor, ML, D_solenoid, update, foot 
+    bytearray([0x55, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0xff]),
+    bytearray([0x55, 0x02, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0xff]),
+    bytearray([0x55, 0x03, 0x00, 0x00, 0x01, 0x01, 0x00, 0x01, 0x00, 0xff])
 ]
-cabin_data_list = bytearray([0xd5, 0x00, 0x00, 0x00, 0x00, 0x64, 0x00, 0x00, 0x00, 0xff])  #Header, Call booking, Siren & downtime, CL, Emg, Battery, contact charger, LL, update, footer (Totle floors count, LaFLiLo PWM, Update status, Footer)
-
+cabin_to_tab = bytearray([0xd5, 0x00, 0x00, 0x00, 0x00, 0x64, 0x04, 0x00, 0x00, 0xff])  #Header, Call booking, Siren & downtime, CL, Emg, Battery,  charge, max_flr, update, footer (Totle floors count, LaFLiLo PWM, Update status, Footer)
+                           #  0xd5 ,0x00 ,0x00 ,0x00 ,0x00 ,0x64 ,0x00 ,0x00 ,0x00 ,0xff   
 
 # Data for Android Cabin
 LL_android_cabin_data_to = [
@@ -49,10 +53,11 @@ LL_android_cabin_data =  bytearray([0x65, 0x00, 0x09, 0x02, 0x00, 0xFF, 0xFF, 0x
 RGB_android_cabin_dataC = bytearray([0x65, 0x05, 0x00, 0x00, 0x09, 0x00, 0x01, 0xff]) #Header, RGB-5, Timer, Bright, Color,  stay_0, stay_1, footer
 FanDatatoCab = bytearray([0x65, 0x04, 0x01, 0x32, 0x01, 0xFF, 0xFF, 0xFF]) #Header, Dev, FAN-1, Time, 0-off 15 to 100% bright, Dummey, Dummey, Footer  
 
-shaft_broad_cast = []
 
 shaft_broad_cast = [] ##used to store the currentrecived brodcast
 prev_err_state = "" #used to store the previous error state
+prev_shaft_broad_cast = [] #used to store the previous error state of the Shaft broad cst
+lidar_data = "" #contain the lidar value
 # Function to format WebSocket URL
 def get_ip(ip, port):
     return f"ws://{ip}:{port}/ws"
@@ -70,92 +75,96 @@ def call_booking(call_type, floor_name, checked):
         return
 
     floor_number = floor_mapping[floor_name]
-   
+    
     print(f"{call_type} Call Booked for ............ {floor_number}")
 
     if call_type == "LOP":
-        for floor in range(len(lops_shaft)):
+        data = lops_shaft
+        for floor in range(len(data)):
             if floor == floor_number and checked:
-                #lops_shaft[floor][2] = 0x01  # Set the specific floor active
-                data = lops_shaft
-                data[2] = 0x01
-                if wifi_shaft != None:
-                    pass
-                    #wifi_shaft.send(data)
-                print(f"............................Updated lops_shaft floor one [{floor}]: ", end="")
+                data[floor][2] = 0x01  # Set the specific floor active
+                print(f"Updated lops_shaft floor one [{floor}]: ", end="")
                 print(" ".join(f"0x{byte:02x}" for byte in data[floor]))
-                send_lop_to_shaft(floor)
-            #else:
-                #lops_shaft[floor][2] = 0x00  # Reset other floors
-                #print(f"Updated lops_shaft floor [{floor}]: ", end="")
-                #print(" ".join(f"0x{byte:02x}" for byte in lops_shaft[floor]))
+                if(wifi_shaft != None):
+                    wifi_shaft.send(data[floor])
+            else:
+                data[floor][2] = 0x00  # Reset other floors
+                print(f"Updated lops_shaft floor [{floor}]: ", end="")
+                print(" ".join(f"0x{byte:02x}" for byte in data[floor]))
+                #wifi_shaft.send(data[floor])
+            
+            #window2.update_lidar_data(floor_number) #just to see the data is updating or not
 
-    elif call_type == "COP":      
+    elif call_type == "COP": 
+        data2 = cabin_to_tab     
         if 0 <= floor_number <= len(lops_shaft)+1 and checked:
-            cabin_data_list[4] = 2 ** floor_number
-            print("Updated cabin data: ", " ".join(f"0x{byte:02x}" for byte in cabin_data_list))
-            #send_cop_to_cabin(floor_number)
+            #cabin_to_tab[1] = 2 ** floor_number
+            data2[1] = 2 ** floor_number
+            print("Updated cabin data: ", " ".join(f"0x{byte:02x}" for byte in data2))
+            if(wifi_cabin != None):
+                wifi_cabin.send(data2)
         elif not checked:
-            cabin_data_list[4] = 0
-            print("Updated cabin data: ", " ".join(f"0x{byte:02x}" for byte in cabin_data_list))
-            #send_cop_to_cabin(floor_number)
-        
-# Sending logic placeholders
-def send_lop_to_shaft(floor):
-    print(f"Sending LOP data to shaft for floor {floor}")
-    # Placeholder: Add WebSocket communication logic here
-
-def send_cop_to_cabin(floor):
-    print(f"Sending COP data to cabin for floor {floor}")
-    # Placeholder: Add WebSocket communication logic here
-
+            #cabin_to_tab[1] = 0
+            print("Updated cabin data: ", " ".join(f"0x{byte:02x}" for byte in data2))
+            if(wifi_cabin != None):
+                data2[1] = 0
+                wifi_cabin.send(data2)
+           
 # WebSocket handling for real-time communication
 def run_websocket_client(url, client_name):
     connect_error_panel = pyqtSignal(bytearray)
     data_recived = []
     
     def on_message(ws, message):
-        current_time = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
+        ''' current_time = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
         print(f"Time: {current_time} - Received message from {client_name}: " +
-              " ".join(f",0x{byte:02x}" for byte in message))
+              " ".join(f",0x{byte:02x}" for byte in message))'''
         if client_name == 'cabin':
-            
-            send_cabin_data(ws)
+            '''
+            current_time = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
+            print(f"Time: {current_time} - Received message from {client_name}: " +
+              " ".join(f",0x{byte:02x}" for byte in message))
+            '''
+            data_received = [int.from_bytes([byte], byteorder='big', signed=True) for byte in message]
+            print("Broadcast from Cabin in INT:", data_received)
+            print(" ")
         elif client_name == 'shaft':
-            global shaft_broad_cast
-            #data_recived = b''
-            #data_recived = list(message)
-            #data_recived = [hex(bytess) for bytess in message]
-            shaft_broad_cast = [hex(bytess) for bytess in message]
-            #data_recived = np.array(data_recived, dtype=np.int8)
-            
-            #connect_error_panel = pyqtSignal(bytearray)
-          
-            print("BroadcasT from shaft in INT: ", data_recived)
-            print("BroadcasT from shaft in HEX: ", shaft_broad_cast)
-            
-            shaft_brodcast_updater()
-            send_shaft_data(ws)
-    
+            global shaft_broad_cast, prev_shaft_broad_cast
+            prev_shaft_broad_cast = [hex(bytess) for bytess in message]
+            data_received = [int.from_bytes([byte], byteorder='big', signed=True) for byte in message]
+            print("Broadcast from shaft in INT:", data_received)
+            if(prev_shaft_broad_cast != shaft_broad_cast):
+                shaft_broad_cast = [hex(bytess) for bytess in message]
+                shaft_brodcast_updater()
+                #threading.Thread(window2.update_lidar_data(shaft_broad_cast[5]))    
     def on_error(ws, error):
         print(f"{client_name} encountered error: {error}")
 
     def on_close(ws, close_status_code, close_msg):
-        global shaft_connectivity_flag, cabin_connectivity_flag
+        global shaft_connectivity_flag, cabin_connectivity_flag,wifi_cabin,wifi_shaft 
         if client_name == "shaft":
             shaft_connectivity_flag = False
+            wifi_shaft = None
         elif client_name == "cabin":
             cabin_connectivity_flag = False
+            wifi_cabin = None
         print(f"{client_name} connection closed with code: {close_status_code}, message: {close_msg}")
 
     def on_open(ws):
-        global shaft_connectivity_flag, cabin_connectivity_flag,wifi_shaft,wifi_cabin
+        global shaft_connectivity_flag, cabin_connectivity_flag,wifi_cabin,wifi_shaft
         if client_name == "shaft":
-            wifi_shaft = ws
+            print("shaft open")
             shaft_connectivity_flag = True
+            #sendDataToShaft()
+            threading.Thread(target=sendDataToShaft).start()
+            wifi_shaft = ws
         elif client_name == "cabin":
-            wifi_cabin = ws
+            print("cabin open")
             cabin_connectivity_flag = True
+            wifi_cabin = ws
+            #sendDataToCabin()
+            #threading.Thread(target=sendDataToCabin).start()
+ 
         print(f"{client_name} connection opened")
 
     # Creating a WebSocket app with the callbacks
@@ -172,9 +181,9 @@ def run_websocket_client(url, client_name):
 
 def shaft_brodcast_updater():
     global shaft_broad_cast
-    global window2
     #print("The updater  ....................................................",shaft_broad_cast)
     window2.check_update_brodcast_error(shaft_broad_cast)
+    window2.update_lidar_data(shaft_broad_cast[5])
     #return shaft_broad_cast
 
 class LiftControlUI(QWidget):
@@ -182,36 +191,42 @@ class LiftControlUI(QWidget):
         super().__init__()
         
         self.setWindowTitle("Lift Control - LOP & COP Panels")
+        #print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
         self.setGeometry(100, 100, 800, 600)
-
+        global shaft_broad_cast
         # Main layout for both panels
         main_layout = QHBoxLayout()
         self.error_buttons = {}
+        self.data_label = QLabel("Current Data: 0", self)
         connection_status_signal = pyqtSignal(bool)
-       # def run_websocket_client(url, client_name):
-   # def on_message(ws, message):
+
         # Create LOP and COP panels
         lop_panel = self.create_lop_panel()
         cop_panel = self.create_cop_panel()
         shaft_panel = self.create_shaft_panel()
         Error_panel = self.create_error_panel()
+        Data_panel = self.create_data_panel(shaft_broad_cast)
+
         # Add the panels to the main layout
         main_layout.addWidget(lop_panel)
         main_layout.addWidget(cop_panel)
         main_layout.addWidget(shaft_panel)
         main_layout.addWidget(Error_panel)
-        self.setLayout(main_layout)
 
-        #self.timer = QTimer(self)
-        #.timer.timeout.connect(lambda: shaft_brodcast_updater(self))
-        #self.connection_status_signal.connect(self.check_update_brodcast_error)
-        #self.timer.start(1000)  # Update data every second
+        outer_layout = QVBoxLayout()
+        outer_layout.addLayout(main_layout)
+        outer_layout.addWidget(Data_panel)
+        self.setLayout(outer_layout)
+
+        #main_layout.addWidget(Data_panel)
+        #self.setLayout(main_layout)
+        
     def create_lop_panel(self):
         # Create a group box for the LOP Panel
         lop_box = QGroupBox("LOP PANEL")
         lop_layout = QVBoxLayout()
         grid_layout = QGridLayout()
-        global prev_err_state
+
         # Create buttons for LOP Panel
         lop_buttons = [
             "Ground Floor", "First Floor", "Second Floor",
@@ -225,7 +240,7 @@ class LiftControlUI(QWidget):
             button = QPushButton(lop_buttons[lop])
             button.setStyleSheet(self.toggle_button_style())
             button.setCheckable(True)
-            button.toggled.connect(lambda checked, btn=lop_buttons[lop]: self.on_toggle_button(type,btn, checked))
+            button.toggled.connect(lambda checked, btn=lop_buttons[lop]:  self.on_toggle_button(type, btn, checked))
             lop_layout.addWidget(button)
             
             grid_layout = QGridLayout()
@@ -267,7 +282,7 @@ class LiftControlUI(QWidget):
                 button.setCheckable(True)
                 button.toggled.connect(lambda checked, btn=btn_text: self.on_toggle_button(type,btn, checked))
                 cop_layout.addWidget(button)
-                
+
                 light_label = QLabel("Light Control")
                 light_slider = QSlider(Qt.Orientation.Horizontal)
                 light_slider.setRange(0, 100)
@@ -281,8 +296,8 @@ class LiftControlUI(QWidget):
                     for col in range(len(rgb_color_name[row])):  # 4 columns
                         color_button = QPushButton(str(rgb_color_name[row][col]))
                         color_button.setStyleSheet(self.color_button_style())
-                        #color_button.ontoggle.connect(lambda checked, num=button_number: self.on_button_click(num))
-                        color_button.toggled.connect(lambda _, type="RGB", num=button_number: self.rgb_color_button(type, num))
+                        #color_button.clicked.connect(lambda checked, num=button_number: self.on_button_click(num))
+                        color_button.clicked.connect(lambda _, type="RGB", num=button_number: self.rgb_color_button(type, num))
                         grid_layout.addWidget(color_button, row, col)
                         button_number += 1
                 cop_layout.addLayout(grid_layout) 
@@ -292,7 +307,7 @@ class LiftControlUI(QWidget):
                 button = QPushButton(btn_text)
                 button.setStyleSheet(self.toggle_button_style())
                 button.setCheckable(True)
-                button.toggled.connect(lambda checked, btn=btn_text: self.on_toggle_button(type,btn, checked))
+                button.toggled.connect(lambda checked, btn=btn_text: self.on_toggle_button(type, btn, checked))
                 cop_layout.addWidget(button)
 
         # Add sliders for light and fan control with labels
@@ -333,33 +348,54 @@ class LiftControlUI(QWidget):
         return shaft_box
 
     def check_update_brodcast_error(self, data):
-        print("Mesagee",data)
-        #if "WF" in self.error_buttons:
-        global prev_err_state
-       
-        errors = self.error_buttons
-        print("Prefv error state ...............................  ",type(prev_err_state), prev_err_state)
+        #print("Mesagee",data)
+        global prev_err_state 
         if len(data) == 16 and data[0] == "0x60" and data[-1] == "0xff": #QPushButton { background-color: green; color: white;font-size: 16px; border-radius: 10px;padding: 10px; }"""
             print(type(data[3]), " " ,data[3])
+            
+            
+            hex_data = data[14]
+            cleaned_hex_data = hex_data.replace("0x", "").replace("x", "")
+            binary_data = ''.join(format(int(char, 16), '04b') for char in cleaned_hex_data)
+            print(f"Hex: {hex_data}")
+            print(f"Binary: {binary_data}")
+            '''lidar_data = int(data[5], 16)
+            #if lidar_data > 1 or lidar_data <= 1:
+            button = self.error_buttons["Lidar Value "]
+            button = QPushButton((f"Lidar Value : {lidar_data}   "),self)
+            button.setStyleSheet(f"background-color: yellow; color: white;")'''
+            
+            if data[13] == "0x1" : #Main Power Off
+                #print("Hiiiiiiiii ")
+                button = self.error_buttons["PF"]
+                print("Prefv error state  in None  ",type(prev_err_state), prev_err_state)
+                button.setStyleSheet(f"background-color: yellow; color: black;")
+                print("Main Power OFF")
+            """else:
+                button = self.error_buttons["PF"]
+                print("Prefv error state  in None  ",type(prev_err_state), prev_err_state)
+                button.setStyleSheet(f"background-color: yellow; color: black;")
+                print("Main Power OFF")"""
+            
             if data[3] == "0xaf" :
-                if prev_err_state in self.error_buttons:
+                if prev_err_state != "NF" and prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
                     button.setStyleSheet(f"background-color: red; color: white;")
-                prev_err_state = None
+                prev_err_state = "NF"
                 print("Prefv error state  in None  ",type(prev_err_state), prev_err_state)
                 print("No error")
             elif data[3] == "0x0":  #Door Lock error
                 if prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
                     button.setStyleSheet(f"background-color: red; color: white;")
-                    print("....................................................")
+                    #print("....................................................")
                 print("Door Lock error")
                 button = self.error_buttons["DL"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
                 prev_err_state = "DL"
                 print("Prefv error state  in Door  ",type(prev_err_state), prev_err_state)
-
             elif data[3] == "0x1":  #Mech Lock error
+                
                 if prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
                     button.setStyleSheet(f"background-color: red; color: white;")
@@ -401,13 +437,13 @@ class LiftControlUI(QWidget):
                 button = self.error_buttons["OU"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
                 prev_err_state = "OU"
-            elif data[3] == "0x7":  #Power error
+            elif data[3] == "0x7" :  #Power error
                 if prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
                     button.setStyleSheet(f"background-color: red; color: white;")
                 button = self.error_buttons["PF"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
-                prev_err_state = "PF"
+                prev_err_state = "PF"            
             elif data[3] == "0x8":  #Cabin out of range
                 if prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
@@ -415,28 +451,28 @@ class LiftControlUI(QWidget):
                 button = self.error_buttons["CO"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
                 prev_err_state = "CO"
-            elif data[3] == "0xA":  #Cabin Not available
+            elif data[3] == "0xA" or  data[3] == "0xa":  #Cabin Not available
                 if prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
                     button.setStyleSheet(f"background-color: red; color: white;")
                 button = self.error_buttons["CN"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
                 prev_err_state = "CN"
-            elif data[3] == "0xC":  #Child Lock error
+            elif data[3] == "0xc" or data[3] == "0xC":  #Child Lock error
                 if prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
                     button.setStyleSheet(f"background-color: red; color: white;")
                 button = self.error_buttons["CL"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
                 prev_err_state = "CL"
-            elif data[3] == "0xE":  #Parental Lock error
+            elif data[3] == "0xE" or data[3] == "0xe":  #Parental Lock error
                 if prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
                     button.setStyleSheet(f"background-color: red; color: white;")
                 button = self.error_buttons["PL"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
                 prev_err_state = "PL"
-            elif data[3] == "0xF":  #Light Curtain error
+            elif data[3] == "0xF" or data[3] == "0xf":  #Light Curtain error
                 if prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
                     button.setStyleSheet(f"background-color: red; color: white;")
@@ -457,8 +493,59 @@ class LiftControlUI(QWidget):
                 button = self.error_buttons["OTA"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
                 prev_err_state = "OTA"
+            
         #print(" ".join(f"0x{byte:02x}" for byte in data))
     
+    def update_lidar_data(self, data):
+        global lidar_data
+        # Randomly update global_data to simulate changes
+        lidar_data = int(data, 16) #random.randint(0, 100)
+        #lidar_data = data
+        #print("The lidar Value ////////////////////////// ", lidar_data)
+        self.data_label.setText(f"Lidar Value: {lidar_data} ")
+        
+        
+        #self.data_label.setText(f"<span style='color: yellow; font-weight: bold;'>Lidar Value: {lidar_data} place</span>")
+
+        '''if(lidar_data > 1):
+            self.data_label.setText(f"<span style='color: green; font-weight: bold;'>Lidar Value: {lidar_data} place</span>")
+        else :
+            self.data_label.setText(f"<span style='color: yellow; font-weight: bold;'>Lidar Value: {lidar_data} place</span>")
+        #self.connect(self.create_data_panel)'''
+        return lidar_data
+
+    def create_data_panel(self, data):
+        data_box = QGroupBox("Data PANEL")
+        data_layout = QVBoxLayout()
+        grid_layout = QGridLayout()
+        print("Data")
+
+        global shaft_broad_cast
+        global  lidar_data #self.update_lidar_data() #100 #data[5]
+        print("Lidar Val is .....................", lidar_data)
+    # Randomly update global_data to simulate changes
+        #lidar_val   = random.randint(0, 100)
+
+        #self.setWindowTitle("Global Data Error Monitor")
+        self.data_label = QLabel((f"Lidar Value: {lidar_data}   "),self)
+        #self.data_label.setText(f"Lidar Value: {lidar_data} place")
+        err_button = QPushButton("Lidar Val" + "")
+        """self.error_label = QLabel("", self)
+        self.error_label.setStyleSheet("color: red; font-weight: bold;")"""
+
+        #layout = QVBoxLayout()
+        data_layout.addWidget(self.data_label)
+        data_box.setLayout(data_layout)
+        data_box.setStyleSheet(self.panel_style())
+        data_box.setStyleSheet("color: Yellow; font-weight: bold;")
+        #data_box.setStyleSheet("border: 2px solid #00ADB5; border-radius: 10px;margin-top: 10px; padding: 10px;font-weight: bold;color: white;background-color: #393E46")
+        #self.data_label.setText(f"<span style='color: yellow; font-weight: bold;'>Lidar Value: {lidar_data} place</span>")
+        #self.data_label.setText(f"Lidar Value: {lidar_data} place")
+        # Set font size, color, and style
+        
+
+        
+        return data_box
 
     def create_error_panel(self):
         erroe_box = QGroupBox("Error PANEL")
@@ -466,48 +553,25 @@ class LiftControlUI(QWidget):
         grid_layout = QGridLayout()
         
         # Error button identifiers
-        shaft_buttons1 = [
-            ["CB", "SB", "PF"], ["SE", "CE", "OU"], ["OD", "AC", "WF"], 
-            ["DL", "LR", "CL"], ["LB", "PL", "ML"], ["LN", "LC", "OS"], 
-            ["OTA", "CN", "CO"]
-        ]
-        error_types = ["CB", "SB", "PF", "SE", "CE", "OU", "OD", "AC", "WF", "DL", "LR", "CL", "LB", "PL", "ML", "LN", "LC", "OS", "OTA", "CN", "CO"]
+        error_types = ["CB", "SB", "PF", "SE", "CE", "OU", "OD", "AC", "WF", "DL", "LR", "CL", "LB", "PL", "ML", "LN", "LC", "OS", "OTA", "CN", "CO", "Lidar Value "]
         for type_index in range(len(error_types)):
             err_name = error_types[type_index]
-            err_button = QPushButton(err_name)
-            err_button.setStyleSheet(f"background-color: red; color: white;")
+            if err_name == "Lidar Value ":
+                #err_button = QPushButton(err_name )
+                err_button = QPushButton((f"Lidar Value: {lidar_data}   "),self)
+                err_button.setStyleSheet(f"background-color: red; color: white;")
+            else:
+                err_button = QPushButton(err_name)
+                err_button.setStyleSheet(f"background-color: red; color: white;")
             #err_button.setStyleSheet(f"background-color: red; color: white;font-size: 16px; border-radius: 10px;padding: 10px; width:40px; height:30px")
             #err_button.setStyleSheet(self.get_button_style(0))
             #lock_button.clicked.connect(lambda _, type="ML", btn=shaft_buttons[lock_index], btn_num=lock_index, floor=lop: self.lop_data_button(type, btn, floor))
 
             grid_layout.addWidget(err_button, type_index // 3, type_index % 3)  # Arrange in a grid (2 columns)
-            print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@Storing the data 111")
             self.error_buttons[err_name] = err_button
-        '''
-        for row in range(len(shaft_buttons1)):
-            for col in range(len(shaft_buttons1[row])):
-                button_label = shaft_buttons1[row][col]
-                if(button_label== "WF" or button_label == "ML" or button_label == "DL"):
-                    error_type = QPushButton(button_label)
-                    error_type.setStyleSheet(self.get_button_style(1))  # Initialize with red color (error)
-                    error_type.setCheckable(True)
-                    error_type.toggled.connect(lambda checked, btn=button_label: self.clickHandler(btn))
-                    #grid_layout.addWidget(error_type, row, col)
-
-                else :
-                    error_type = QPushButton(shaft_buttons1[row][col])
-                    error_type.setStyleSheet(self.get_button_style(0))  # Initialize with red color (error)
-                grid_layout.addWidget(error_type, row, col)
-                grid_layout.addWidget(error_type, error_type // 4, error_type % 4)  # Arrange in a grid (4 columns)
-                self.error_buttons[button_label] = error_type
-                 
-                # Store reference of the buttons for future color change
-            #self.error_buttons[shaft_buttons1[row][col]] = error_type
-        '''         
         erroe_box.setLayout(grid_layout)
         erroe_box.setStyleSheet(self.panel_style())
         return erroe_box
-    
 
     def clickHandler(self, ErrorName):
       
@@ -529,11 +593,6 @@ class LiftControlUI(QWidget):
         dialog.setLayout(error_layout)
         dialog.exec()
 
-    def rgb_color_button(self, type, num):
-        if(type == "RGB") :
-            RGB_android_cabin_dataC[4] = num
-        elif(type == "ML") :
-            print(f"Buttons {num} clicked!")
 
     def lop_data_button(self, type, btn, floor):   #ml_states = ["Door Switch", "Solenoid", "ML Open", "ML Close", "ML Semi"]
 
@@ -583,36 +642,34 @@ class LiftControlUI(QWidget):
             elif checked == True :
                 RGB_android_cabin_dataC[2] = 0x10
                 RGB_android_cabin_dataC[3] = 50
-        if button_name == "RGB Sync" and type == "COP":
-            print("Sync is ", checked)
-            if  checked == True:
-                RGB_android_cabin_dataC[7] = 0x02
-                RGB_android_cabin_dataC[3] = 50
-
-                
         if button_name == "Child Lock" and type == "COP": 
             if  checked == False:
-                RGB_android_cabin_dataC[2] = 0
-                RGB_android_cabin_dataC[3] = 0
+                print("CL oFF")
+                cabin_to_shaft[2] = 0 
+                cabin_to_tab[3] = 0
                 
             elif checked == True :
-                RGB_android_cabin_dataC[2] = 0x10
-                RGB_android_cabin_dataC[3] = 50
+                print("CL on")
+                cabin_to_shaft[2] = 1
+                cabin_to_tab[3] = 1
         if button_name == "Emergency" and type == "COP":  
             if  checked == False:
-                RGB_android_cabin_dataC[2] = 0
-                RGB_android_cabin_dataC[3] = 0
-                
+                print("Emg oFF")
+                cabin_to_shaft[3] = 0  
+                cabin_to_tab[4] = 0              
             elif checked == True :
-                RGB_android_cabin_dataC[2] = 0x10
-                RGB_android_cabin_dataC[3] = 50
+                print("Emg on")
+                cabin_to_shaft[3] = 1
+                cabin_to_tab[4] = 1
         if (button_name == "Ground Floor" or  button_name == "First Floor" or button_name =="Second Floor" or button_name == "Third Floor") :
+            #print("Floor booked for ", type)
             call_booking(type, button_name, checked)  
         
         print(f"{button_name} toggled {'ON' if checked else 'OFF'}")
         self.sender().setStyleSheet(f"background-color: {color}; color: white; border-radius: 10px; padding: 10px;font-weight: bold; ")
 
-    def on_slider_change(self, slider_name, value):    
+    def on_slider_change(self, slider_name, value):
+        
         print(f"{slider_name} slider set to {value}")
         if(slider_name == "Light") :
             RGB_android_cabin_dataC[3] = value
@@ -666,6 +723,7 @@ class LiftControlUI(QWidget):
             background-color: #007B7F;
         }
         """
+    
     def get_button_style(self, error_state):
         """Return the appropriate button style based on the error state (0 = red, 1 = green)."""
         if error_state == 1:
@@ -699,8 +757,6 @@ class LiftControlUI(QWidget):
             }
             """
 
-
-
 # Start UDP listener and WebSocket in separate threads
 def udp_to_websocket():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
@@ -711,6 +767,7 @@ def udp_to_websocket():
     sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
     while True:
         data, addr = sock.recvfrom(1024)  # Buffer size of 1024 bytes
+        #print("DATA UDP ", " ".join(f"0x{byte:02x}" for byte in data))
         if data[0] == 0xde and data[1] == 0x01 and not shaft_connectivity_flag:
             print("Connecting to shaft at ", addr[0],  data)
 
@@ -719,22 +776,31 @@ def udp_to_websocket():
             print("Connecting to cabin at ", addr[0])
             threading.Thread(target=run_websocket_client, args=(get_ip(addr[0], 5050), "cabin")).start()
 
-def send_cabin_data(ws):
-   # np.array_equal()
-    
-    ws.send(LL_android_cabin_data)
-    ws.send(RGB_android_cabin_dataC)
-    ws.send(FanDatatoCab)
-    print("Data Sent to cabin")
-    print("cabnf" + " ".join(f",0x{byte:02x}" for byte in RGB_android_cabin_dataC))
+def sendDataToCabin():
+    global cabin_connectivity_flag,wifi_cabin
+    while(cabin_connectivity_flag):
+        #print("sending cabin data",RGB_android_cabin_dataC)
+        if wifi_cabin != None:
+            #wifi_cabin.send(LL_android_cabin_data)
+            #wifi_cabin.send(RGB_android_cabin_dataC)
+            #wifi_cabin.send(FanDatatoCab)
+            pass
+        time.sleep(0.5) 
 
-def send_shaft_data(ws):
-    
-    for lop in range(2):
-        ws.send(lops_shaft[lop])
-        print("Data lop to Shaft")
-    ws.send(cabin_data_list)
-    print("Data cabin to Shaft")
+def sendDataToShaft():
+    global shaft_connectivity_flag,wifi_shaft
+    print("sendDataToShaft.........", type(wifi_shaft), wifi_shaft)
+    while(shaft_connectivity_flag):
+        if wifi_shaft != None:
+
+            for lop in range(2):
+                pass
+                #wifi_shaft.send(lops_shaft[lop])
+            print("Data lop to Shaft")
+            wifi_shaft.send(cabin_to_tab)
+            wifi_shaft.send(cabin_to_shaft)
+        time.sleep(0.4)        
+
 
 # Thread for UDP listening
 udp_thread = threading.Thread(target=udp_to_websocket)
