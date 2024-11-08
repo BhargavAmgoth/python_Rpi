@@ -38,10 +38,10 @@ wifi_shaft = None
 lops_shaft = [
     bytearray([0x55, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0xff]),  #Head, lop_flor, calBok_stat, cabin_flor, Door_sensor, ML, D_solenoid, update, foot 
     bytearray([0x55, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0xff]),
-    bytearray([0x55, 0x02, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0xff]),
-    bytearray([0x55, 0x03, 0x00, 0x00, 0x01, 0x01, 0x00, 0x01, 0x00, 0xff])
+    #bytearray([0x55, 0x02, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0xff]),
+    #bytearray([0x55, 0x03, 0x00, 0x00, 0x01, 0x01, 0x00, 0x01, 0x00, 0xff])
 ]
-cabin_to_tab = bytearray([0xd5, 0x00, 0x00, 0x00, 0x00, 0x64, 0x04, 0x00, 0x00, 0xff])  #Header, Call booking, Siren & downtime, CL, Emg, Battery,  charge, max_flr, update, footer (Totle floors count, LaFLiLo PWM, Update status, Footer)
+cabin_to_tab = bytearray([0xd5, 0x00, 0x00, 0x00, 0x00, 0x64, 0x02, 0x00, 0x00, 0xff])  #Header, Call booking, Siren & downtime, CL, Emg, Battery,  charge, max_flr, update, footer (Totle floors count, LaFLiLo PWM, Update status, Footer)
                            #  0xd5 ,0x00 ,0x00 ,0x00 ,0x00 ,0x64 ,0x00 ,0x00 ,0x00 ,0xff   
 
 # Data for Android Cabin
@@ -553,20 +553,14 @@ class LiftControlUI(QWidget):
         grid_layout = QGridLayout()
         
         # Error button identifiers
-        error_types = ["CB", "SB", "PF", "SE", "CE", "OU", "OD", "AC", "WF", "DL", "LR", "CL", "LB", "PL", "ML", "LN", "LC", "OS", "OTA", "CN", "CO", "Lidar Value "]
+        error_types = ["CB", "SB", "PF", "SE", "CE", "OU", "OD", "AC", "WF", "DL", "LR", "CL", "LB", "PL", "ML", "LN", "LC", "OS", "OTA", "CN", "CO"]
         for type_index in range(len(error_types)):
             err_name = error_types[type_index]
-            if err_name == "Lidar Value ":
-                #err_button = QPushButton(err_name )
-                err_button = QPushButton((f"Lidar Value: {lidar_data}   "),self)
-                err_button.setStyleSheet(f"background-color: red; color: white;")
-            else:
-                err_button = QPushButton(err_name)
-                err_button.setStyleSheet(f"background-color: red; color: white;")
+            err_button = QPushButton(err_name)
+            err_button.setStyleSheet(f"background-color: red; color: white;")
             #err_button.setStyleSheet(f"background-color: red; color: white;font-size: 16px; border-radius: 10px;padding: 10px; width:40px; height:30px")
             #err_button.setStyleSheet(self.get_button_style(0))
             #lock_button.clicked.connect(lambda _, type="ML", btn=shaft_buttons[lock_index], btn_num=lock_index, floor=lop: self.lop_data_button(type, btn, floor))
-
             grid_layout.addWidget(err_button, type_index // 3, type_index % 3)  # Arrange in a grid (2 columns)
             self.error_buttons[err_name] = err_button
         erroe_box.setLayout(grid_layout)
@@ -597,23 +591,27 @@ class LiftControlUI(QWidget):
     def lop_data_button(self, type, btn, floor):   #ml_states = ["Door Switch", "Solenoid", "ML Open", "ML Close", "ML Semi"]
 
         #print(" ".join(f"0x{byte:02x}" for byte in lops_shaft[floor]))
-        if(type == "ML") :
-            if(btn == "DS On") :
-                lops_shaft[floor][4] = 0
-            elif(btn == "DS Off") :
-                lops_shaft[floor][4] = 1
-            elif(btn == "ML Open") :
-                lops_shaft[floor][5] = 1
-            elif(btn == "ML Close") :
-                lops_shaft[floor][5] = 0
-            elif(btn == "ML Semi") :
-                lops_shaft[floor][5] = 2
-            elif(btn == "DL On") :
-                lops_shaft[floor][6] = 1
-            elif(btn == "DL Off") :
-                lops_shaft[floor][6] = 0
-            print(f"Floor {floor} {btn} Button clicked!")
-            #print(" ".join(f"0x{byte:02x}" for byte in lops_shaft[floor]))
+        #print("The Floor is ", floor, "And ", len(lops_shaft))
+        if(floor < len(lops_shaft)) :
+            if(type == "ML") :
+                if(btn == "DS On") :
+                    lops_shaft[floor][4] = 0
+                elif(btn == "DS Off") :
+                    lops_shaft[floor][4] = 1
+                elif(btn == "ML Open") :
+                    lops_shaft[floor][5] = 1
+                elif(btn == "ML Close") :
+                    lops_shaft[floor][5] = 0
+                elif(btn == "ML Semi") :
+                    lops_shaft[floor][5] = 2
+                elif(btn == "DL On") :
+                    lops_shaft[floor][6] = 1
+                elif(btn == "DL Off") :
+                    lops_shaft[floor][6] = 0
+                print(f"Floor {floor} {btn} Button clicked!")
+                #print(" ".join(f"0x{byte:02x}" for byte in lops_shaft[floor]))
+        else :
+            print("Floor is Not Available")
 
     def on_button_click(self, button_number):
         RGB_android_cabin_dataC[4] = button_number
@@ -816,4 +814,3 @@ window2.setStyleSheet("background-color: #222831;")
 window2.show()
 # Start the PyQt event loop
 sys.exit(app.exec())
- 
