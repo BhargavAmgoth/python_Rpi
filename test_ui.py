@@ -5,11 +5,11 @@ import struct
 import numpy as np
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,QDialog,
-    QPushButton, QLabel, QSlider, QGroupBox, QGridLayout, QBoxLayout
+    QPushButton, QLabel, QSlider, QGroupBox, QGridLayout, QBoxLayout, QCheckBox
 )
+from PyQt6.QtCore import Qt, QTimer, pyqtProperty, QPropertyAnimation, pyqtSignal, QThread, QObject
+from PyQt6.QtGui import QColor, QPainter, QBrush
 
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread, QObject
-from PyQt6.QtGui import QColor
 
 import websocket
 from datetime import datetime
@@ -36,8 +36,8 @@ wifi_cabin = None
 wifi_shaft = None
 
 lops_shaft = [
-    bytearray([0x55, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0xff]),  #Head, lop_flor, calBok_stat, cabin_flor, Door_sensor, ML, D_solenoid, update, foot 
-    bytearray([0x55, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0xff]),
+    bytearray([0x55, 0x00, 0x00, 0x01, 0x01, 0x00, 0x01, 0x00, 0x00, 0xff]),  #Head, lop_flor, calBok_stat, cabin_flor, Door_sensor, ML, D_solenoid, dummy-to-see-missed, foot 
+    bytearray([0x55, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x00, 0x00, 0xff]),
     #bytearray([0x55, 0x02, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0xff]),
     #bytearray([0x55, 0x03, 0x00, 0x00, 0x01, 0x01, 0x00, 0x01, 0x00, 0xff])
 ]
@@ -96,20 +96,21 @@ def call_booking(call_type, floor_name, checked):
             #window2.update_lidar_data(floor_number) #just to see the data is updating or not
 
     elif call_type == "COP": 
-        data2 = cabin_to_tab     
+             
         if 0 <= floor_number <= len(lops_shaft)+1 and checked:
-            #cabin_to_tab[1] = 2 ** floor_number
+            data2 = cabin_to_tab
             data2[1] = 2 ** floor_number
             print("Updated cabin data: ", " ".join(f"0x{byte:02x}" for byte in data2))
             if(wifi_cabin != None):
                 wifi_cabin.send(data2)
+                
         elif not checked:
-            #cabin_to_tab[1] = 0
+            data2 = cabin_to_tab
             print("Updated cabin data: ", " ".join(f"0x{byte:02x}" for byte in data2))
-            if(wifi_cabin != None):
+            if(wifi_cabin != None):            
                 data2[1] = 0
                 wifi_cabin.send(data2)
-           
+         
 # WebSocket handling for real-time communication
 def run_websocket_client(url, client_name):
     connect_error_panel = pyqtSignal(bytearray)
@@ -120,21 +121,17 @@ def run_websocket_client(url, client_name):
         print(f"Time: {current_time} - Received message from {client_name}: " +
               " ".join(f",0x{byte:02x}" for byte in message))'''
         if client_name == 'cabin':
-            '''
-            current_time = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
-            print(f"Time: {current_time} - Received message from {client_name}: " +
-              " ".join(f",0x{byte:02x}" for byte in message))
-            '''
             data_received = [int.from_bytes([byte], byteorder='big', signed=True) for byte in message]
-            print("Broadcast from Cabin in INT:", data_received)
+            print("Broadcast Cabin INT:", data_received)
             print(" ")
         elif client_name == 'shaft':
             global shaft_broad_cast, prev_shaft_broad_cast
             prev_shaft_broad_cast = [hex(bytess) for bytess in message]
             data_received = [int.from_bytes([byte], byteorder='big', signed=True) for byte in message]
-            print("Broadcast from shaft in INT:", data_received)
+            print("Broadcast shaft INT:", data_received)
             if(prev_shaft_broad_cast != shaft_broad_cast):
                 shaft_broad_cast = [hex(bytess) for bytess in message]
+                #print("In shafrt broadcast updater ", shaft_broad_cast)
                 shaft_brodcast_updater()
                 #threading.Thread(window2.update_lidar_data(shaft_broad_cast[5]))    
     def on_error(ws, error):
@@ -184,7 +181,59 @@ def shaft_brodcast_updater():
     #print("The updater  ....................................................",shaft_broad_cast)
     window2.check_update_brodcast_error(shaft_broad_cast)
     window2.update_lidar_data(shaft_broad_cast[5])
+    window2.change_data(shaft_broad_cast[13])
     #return shaft_broad_cast
+
+class AnimatedToggle(QCheckBox):
+    def __init__(self, label, parent=None):
+        super().__init__(parent)
+        self.label = label
+        self.setFixedSize(40, 20)
+        self.setStyleSheet("background: transparent;")
+        self._circle_position = 5
+        self._circle_color = QColor("#FFFFFF")
+        self._bg_color = QColor("#FF0000")
+        self._active_color = QColor("#00FF00")
+        self._animation = QPropertyAnimation(self, b"circle_position", self)
+        self._animation.setDuration(100)
+
+        self.stateChanged.connect(self.start_animation)
+        
+        # Disable user interaction with the checkbox (so it can't be toggled by the user)
+        self.setEnabled(False)
+
+    @pyqtProperty(float)
+    def circle_position(self):
+        return self._circle_position
+
+    @circle_position.setter
+    def circle_position(self, pos):
+        self._circle_position = pos
+        self.update()
+
+    def start_animation(self):
+        self._animation.stop()
+        if self.isChecked():
+            self._animation.setEndValue(self.width() - self.height() + 3)
+            self._bg_color = self._active_color
+        else:
+            self._animation.setEndValue(3)
+            self._bg_color = QColor("#FF0000")
+        self._animation.start()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setBrush(QBrush(self._bg_color))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(0, 0, self.width(), self.height(), self.height() / 2, self.height() / 2)
+        painter.setBrush(QBrush(self._circle_color))
+        painter.drawEllipse(int(self._circle_position), 3, self.height() - 6, self.height() - 6)
+        painter.end()
+
+    def set_state(self, on):
+        self.setChecked(on)  # This will update the toggle state
+        self.start_animation()
 
 class LiftControlUI(QWidget):
     def __init__(self):
@@ -206,7 +255,6 @@ class LiftControlUI(QWidget):
         shaft_panel = self.create_shaft_panel()
         Error_panel = self.create_error_panel()
         Data_panel = self.create_data_panel(shaft_broad_cast)
-
         # Add the panels to the main layout
         main_layout.addWidget(lop_panel)
         main_layout.addWidget(cop_panel)
@@ -217,10 +265,13 @@ class LiftControlUI(QWidget):
         outer_layout.addLayout(main_layout)
         outer_layout.addWidget(Data_panel)
         self.setLayout(outer_layout)
+        Device_panel = self.DerviceAvailablityPanel()
+        Network_panel = self.DoorAvailablityPanel()
+        outer_layout.addWidget(Device_panel)
+        outer_layout.addWidget(Network_panel)
+        self.setLayout(outer_layout)
 
-        #main_layout.addWidget(Data_panel)
-        #self.setLayout(main_layout)
-        
+                       
     def create_lop_panel(self):
         # Create a group box for the LOP Panel
         lop_box = QGroupBox("LOP PANEL")
@@ -325,6 +376,12 @@ class LiftControlUI(QWidget):
         cop_box.setLayout(cop_layout)
         cop_box.setStyleSheet(self.panel_style())
         return cop_box
+    
+    def rgb_color_button(self, type, num):
+        if(type == "RGB") :
+            RGB_android_cabin_dataC[4] = num
+        elif(type == "ML") :
+            print(f"Buttons {num} clicked!")
 
     def create_shaft_panel(self) :
         shaft_box = QGroupBox("SHAFT PANEL")
@@ -350,7 +407,7 @@ class LiftControlUI(QWidget):
     def check_update_brodcast_error(self, data):
         #print("Mesagee",data)
         global prev_err_state 
-        if len(data) == 16 and data[0] == "0x60" and data[-1] == "0xff": #QPushButton { background-color: green; color: white;font-size: 16px; border-radius: 10px;padding: 10px; }"""
+        if len(data) == 16 and data[0] == "0x60" and data[-1] == "0xff": #QPushButton { background-color: green; color: white;font-size: 12px; border-radius: 8px;padding: 8px; }"""
             print(type(data[3]), " " ,data[3])
             
             
@@ -359,30 +416,13 @@ class LiftControlUI(QWidget):
             binary_data = ''.join(format(int(char, 16), '04b') for char in cleaned_hex_data)
             print(f"Hex: {hex_data}")
             print(f"Binary: {binary_data}")
-            '''lidar_data = int(data[5], 16)
-            #if lidar_data > 1 or lidar_data <= 1:
-            button = self.error_buttons["Lidar Value "]
-            button = QPushButton((f"Lidar Value : {lidar_data}   "),self)
-            button.setStyleSheet(f"background-color: yellow; color: white;")'''
-            
-            if data[13] == "0x1" : #Main Power Off
-                #print("Hiiiiiiiii ")
-                button = self.error_buttons["PF"]
-                print("Prefv error state  in None  ",type(prev_err_state), prev_err_state)
-                button.setStyleSheet(f"background-color: yellow; color: black;")
-                print("Main Power OFF")
-            """else:
-                button = self.error_buttons["PF"]
-                print("Prefv error state  in None  ",type(prev_err_state), prev_err_state)
-                button.setStyleSheet(f"background-color: yellow; color: black;")
-                print("Main Power OFF")"""
-            
+                        
             if data[3] == "0xaf" :
                 if prev_err_state != "NF" and prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
                     button.setStyleSheet(f"background-color: red; color: white;")
                 prev_err_state = "NF"
-                print("Prefv error state  in None  ",type(prev_err_state), prev_err_state)
+                print("PrevErrorState  in None  ",type(prev_err_state), prev_err_state)
                 print("No error")
             elif data[3] == "0x0":  #Door Lock error
                 if prev_err_state in self.error_buttons:
@@ -393,7 +433,7 @@ class LiftControlUI(QWidget):
                 button = self.error_buttons["DL"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
                 prev_err_state = "DL"
-                print("Prefv error state  in Door  ",type(prev_err_state), prev_err_state)
+                print("PrevErrorState  in Door  ",type(prev_err_state), prev_err_state)
             elif data[3] == "0x1":  #Mech Lock error
                 
                 if prev_err_state in self.error_buttons:
@@ -437,7 +477,7 @@ class LiftControlUI(QWidget):
                 button = self.error_buttons["OU"]
                 button.setStyleSheet(f"background-color: yellow; color: black;")
                 prev_err_state = "OU"
-            elif data[3] == "0x7" :  #Power error
+            elif data[3] == "0x7" or data[13] == "0x1" :  #Power error
                 if prev_err_state in self.error_buttons:
                     button = self.error_buttons[prev_err_state]
                     button.setStyleSheet(f"background-color: red; color: white;")
@@ -498,20 +538,9 @@ class LiftControlUI(QWidget):
     
     def update_lidar_data(self, data):
         global lidar_data
-        # Randomly update global_data to simulate changes
-        lidar_data = int(data, 16) #random.randint(0, 100)
-        #lidar_data = data
-        #print("The lidar Value ////////////////////////// ", lidar_data)
+        lidar_data = int(data, 16) 
         self.data_label.setText(f"Lidar Value: {lidar_data} ")
-        
-        
         #self.data_label.setText(f"<span style='color: yellow; font-weight: bold;'>Lidar Value: {lidar_data} place</span>")
-
-        '''if(lidar_data > 1):
-            self.data_label.setText(f"<span style='color: green; font-weight: bold;'>Lidar Value: {lidar_data} place</span>")
-        else :
-            self.data_label.setText(f"<span style='color: yellow; font-weight: bold;'>Lidar Value: {lidar_data} place</span>")
-        #self.connect(self.create_data_panel)'''
         return lidar_data
 
     def create_data_panel(self, data):
@@ -538,13 +567,10 @@ class LiftControlUI(QWidget):
         data_box.setLayout(data_layout)
         data_box.setStyleSheet(self.panel_style())
         data_box.setStyleSheet("color: Yellow; font-weight: bold;")
-        #data_box.setStyleSheet("border: 2px solid #00ADB5; border-radius: 10px;margin-top: 10px; padding: 10px;font-weight: bold;color: white;background-color: #393E46")
+        #data_box.setStyleSheet("border: 2px solid #00ADB5; border-radius: 8px;margin-top: 8px; padding: 8px;font-weight: bold;color: white;background-color: #393E46")
         #self.data_label.setText(f"<span style='color: yellow; font-weight: bold;'>Lidar Value: {lidar_data} place</span>")
         #self.data_label.setText(f"Lidar Value: {lidar_data} place")
         # Set font size, color, and style
-        
-
-        
         return data_box
 
     def create_error_panel(self):
@@ -558,9 +584,10 @@ class LiftControlUI(QWidget):
             err_name = error_types[type_index]
             err_button = QPushButton(err_name)
             err_button.setStyleSheet(f"background-color: red; color: white;")
-            #err_button.setStyleSheet(f"background-color: red; color: white;font-size: 16px; border-radius: 10px;padding: 10px; width:40px; height:30px")
+            #err_button.setStyleSheet(f"background-color: red; color: white;font-size: 12px; border-radius: 8px;padding: 8px; width:40px; height:30px")
             #err_button.setStyleSheet(self.get_button_style(0))
             #lock_button.clicked.connect(lambda _, type="ML", btn=shaft_buttons[lock_index], btn_num=lock_index, floor=lop: self.lop_data_button(type, btn, floor))
+
             grid_layout.addWidget(err_button, type_index // 3, type_index % 3)  # Arrange in a grid (2 columns)
             self.error_buttons[err_name] = err_button
         erroe_box.setLayout(grid_layout)
@@ -586,13 +613,112 @@ class LiftControlUI(QWidget):
         error_layout.addLayout(grid_layout)
         dialog.setLayout(error_layout)
         dialog.exec()
+    
+    def DerviceAvailablityPanel(self):
+        toggle_box = QGroupBox("Device Availability Panel")
+        toggle_layout = QGridLayout()  # Use QGridLayout for grid arrangement
 
+        # Define the labels for each toggle switch
+        self.Device_toggles = {
+            "Power Available":AnimatedToggle("Power Available"),
+            "Over Load":AnimatedToggle("Over Load"),
+            "Emergency Shaft":AnimatedToggle("Emergency Shaft"),
+            "Calibibration":AnimatedToggle("Calibibration"),
+            "Lidar Device":AnimatedToggle("Lidar Device"),
+            "Child Lock":AnimatedToggle("Child Lock"),
+            "Emergency Cabin":AnimatedToggle("Emergency Cabin"),
+            "Device OTA":AnimatedToggle("Device OTA"),
+        }
+        #toggle_layout.setHorizontalSpacing(150)  # Adjust this value as needed for more space between columns
+        #toggle_layout.setVerticalSpacing(15)
+        toggle_layout.setSpacing(10)
+        row = 0
+        col = 0
+        for label, toggle in self.Device_toggles.items():
+            label_widget = QLabel(label)
+            
+            # Add the label and toggle to the grid layout
+            
+            toggle_layout.addWidget(toggle, row, col * 2 )    # Toggle on the right side
+            toggle_layout.addWidget(label_widget, row, col * 2 + 1)  # Label on the left side
+
+            col += 1
+            if col == 4:  # Move to the next row after three toggles
+                col = 0
+                row += 1
+
+        toggle_box.setLayout(toggle_layout)
+        toggle_box.setStyleSheet("color: White; font-weight: bold;")
+        return toggle_box
+    
+    def set_toggle_state(self, label, state):
+        if label in self.Device_toggles:
+            self.Device_toggles[label].set_state(state)
+
+    def update_toggles(self, data):
+        print("Binary Data Here:", data)
+        data.reverse()
+        print("Binary Data Here:", data)
+        # Update toggles based on the incoming data
+        self.set_toggle_state("Power Available", data[0] != '1')  # Is power device is off = 1 then power is on 
+        self.set_toggle_state("Over Load", data[1] == '1')
+        self.set_toggle_state("Emergency Shaft", data[2] == '1')
+        self.set_toggle_state("Calibibration", data[3] == '1')
+        self.set_toggle_state("Lidar Device", data[4] == '1')
+        self.set_toggle_state("Child Lock", data[5] == '1')
+        self.set_toggle_state("Emergency Shaft", data[6] == '1')
+        self.set_toggle_state("Device OTA", data[7] == '1')
+
+    def change_data(self, data):
+        # This function is called periodically to change the data and update toggles
+        #print("In the change data", data)
+        hex_data = data
+        cleaned_hex_data = hex_data.replace("0x", "").replace("x", "")
+        binary_data = ''.join(format(int(char, 16), '04b') for char in cleaned_hex_data)
+        toggle_data = list(binary_data[:8])  # Convert the first 8 bits to a list of '1' and '0' strings  
+        self.update_toggles(toggle_data)  # Update the toggle switches with binary data
+
+    def DoorAvailablityPanel(self):
+        toggle_box = QGroupBox("Network Availability Panel")
+        toggle_layout = QGridLayout()  # Use QGridLayout for grid arrangement
+
+        # Define the labels for each toggle switch
+        self.Nework_toggles = {
+            "Door G":AnimatedToggle("Door G"),
+            "Door 1":AnimatedToggle("Door 1"),
+            "Door 2":AnimatedToggle("Door 2"),
+            "Door 3":AnimatedToggle("Door 3"),
+            "Solinoid G":AnimatedToggle("Solinoid G"),
+            "Solinoid 1":AnimatedToggle("Solinoid 1"),
+            "Solinoid 2":AnimatedToggle("Solinoid 2"),
+            "Solinoid 3":AnimatedToggle("Solinoid 3"),
+        }
+        #toggle_layout.setHorizontalSpacing(150)  # Adjust this value as needed for more space between columns
+        #toggle_layout.setVerticalSpacing(15)
+        toggle_layout.setSpacing(10)
+        row = 0
+        col = 0
+        for label, toggle in self.Nework_toggles.items():
+            label_widget = QLabel(label)
+            
+            # Add the label and toggle to the grid layout
+            toggle_layout.addWidget(label_widget, row, col * 2+1)  # Label on the left side
+            toggle_layout.addWidget(toggle, row, col * 2 )    # Toggle on the right side
+
+            col += 1
+            if col == 4:  # Move to the next row after three toggles
+                col = 0
+                row += 1
+
+        toggle_box.setLayout(toggle_layout)
+        toggle_box.setStyleSheet("color: White; font-weight: bold;")
+        return toggle_box
+    
 
     def lop_data_button(self, type, btn, floor):   #ml_states = ["Door Switch", "Solenoid", "ML Open", "ML Close", "ML Semi"]
-
         #print(" ".join(f"0x{byte:02x}" for byte in lops_shaft[floor]))
-        #print("The Floor is ", floor, "And ", len(lops_shaft))
         if(floor < len(lops_shaft)) :
+
             if(type == "ML") :
                 if(btn == "DS On") :
                     lops_shaft[floor][4] = 0
@@ -611,7 +737,7 @@ class LiftControlUI(QWidget):
                 print(f"Floor {floor} {btn} Button clicked!")
                 #print(" ".join(f"0x{byte:02x}" for byte in lops_shaft[floor]))
         else :
-            print("Floor is Not Available")
+            print("Floor is not available")
 
     def on_button_click(self, button_number):
         RGB_android_cabin_dataC[4] = button_number
@@ -664,7 +790,7 @@ class LiftControlUI(QWidget):
             call_booking(type, button_name, checked)  
         
         print(f"{button_name} toggled {'ON' if checked else 'OFF'}")
-        self.sender().setStyleSheet(f"background-color: {color}; color: white; border-radius: 10px; padding: 10px;font-weight: bold; ")
+        self.sender().setStyleSheet(f"background-color: {color}; color: white; border-radius: 8px; padding: 8px;font-weight: bold; ")
 
     def on_slider_change(self, slider_name, value):
         
@@ -680,28 +806,28 @@ class LiftControlUI(QWidget):
         return """
         QGroupBox {
             border: 2px solid #00ADB5;
-            border-radius: 10px;
-            margin-top: 10px;
-            padding: 10px;
+            border-radius: 8px;
+            margin-top: 8px;
+            padding: 8px;
             font-weight: bold;
             color: white;
             background-color: #393E46;
         }
         QLabel {
             color: blue;
-            font-size: 14px;
+            font-size: 10px;
         }
         """
 
     def toggle_button_style(self):
         return """
         QPushButton {
-            background-color: red;
+            background-color:#007B7F;
             font-weight: bold;
             color: white;
-            border-radius: 10px;
-            padding: 10px;
-            font-size: 14px;
+            border-radius: 8px;
+            padding: 8px;
+            font-size: 10px;
         }
         QPushButton:hover {
             background-color: #007B7F;
@@ -713,9 +839,9 @@ class LiftControlUI(QWidget):
         QPushButton {
             background-color: #008367; 
             color: white;
-            font-size: 14px;
-            border-radius: 10px;
-            padding: 10px;
+            font-size: 10px;
+            border-radius: 8px;
+            padding: 8px;
         }
         QPushButton:hover {
             background-color: #007B7F;
@@ -729,9 +855,9 @@ class LiftControlUI(QWidget):
             QPushButton {
                 background-color: green;
                 color: white;
-                font-size: 16px;
-                border-radius: 10px;
-                padding: 10px;
+                font-size: 12px;
+                border-radius: 8px;
+                padding: 8px;
             }
             """
         elif error_state == 2:
@@ -739,9 +865,9 @@ class LiftControlUI(QWidget):
             QPushButton {
                 background-color: yellow;
                 color: black;
-                font-size: 16px;
-                border-radius: 10px;
-                padding: 10px;
+                font-size: 12px;
+                border-radius: 8px;
+                padding: 8px;
             }
             """
         else:
@@ -749,9 +875,9 @@ class LiftControlUI(QWidget):
             QPushButton {
                 background-color: red;
                 color: white;
-                font-size: 16px;
-                border-radius: 10px;
-                padding: 10px;
+                font-size: 12px;
+                border-radius: 8px;
+                padding: 8px;
             }
             """
 
@@ -765,7 +891,7 @@ def udp_to_websocket():
     sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
     while True:
         data, addr = sock.recvfrom(1024)  # Buffer size of 1024 bytes
-        #print("DATA UDP ", " ".join(f"0x{byte:02x}" for byte in data))
+        print("DATA UDP ", " ".join(f"0x{byte:02x}" for byte in data))
         if data[0] == 0xde and data[1] == 0x01 and not shaft_connectivity_flag:
             print("Connecting to shaft at ", addr[0],  data)
 
@@ -790,15 +916,11 @@ def sendDataToShaft():
     print("sendDataToShaft.........", type(wifi_shaft), wifi_shaft)
     while(shaft_connectivity_flag):
         if wifi_shaft != None:
-
+            #wifi_shaft.send(cabin_to_shaft)
             for lop in range(2):
-                pass
-                #wifi_shaft.send(lops_shaft[lop])
-            print("Data lop to Shaft")
-            wifi_shaft.send(cabin_to_tab)
-            wifi_shaft.send(cabin_to_shaft)
+                wifi_shaft.send(lops_shaft[lop])
+            wifi_shaft.send(cabin_to_tab)    
         time.sleep(0.4)        
-
 
 # Thread for UDP listening
 udp_thread = threading.Thread(target=udp_to_websocket)
@@ -814,3 +936,4 @@ window2.setStyleSheet("background-color: #222831;")
 window2.show()
 # Start the PyQt event loop
 sys.exit(app.exec())
+
