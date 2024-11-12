@@ -9,7 +9,6 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtProperty, QPropertyAnimation, pyqtSignal, QThread, QObject
 from PyQt6.QtGui import QColor, QPainter, QBrush
-
 import os
 import websocket
 from datetime import datetime
@@ -17,6 +16,7 @@ import time
 import ctypes
 import random
 import atexit
+
 # Constants for multicast group
 MCAST_GRP = '239.1.2.3'
 MCAST_PORT = 2323
@@ -29,8 +29,6 @@ Broadcast_form_shaft = [0x60 ,0x00 ,0x00 ,0x00 ,0xdf ,0x00 ,0x00 ,0x00 ,0x00 ,0x
 #0x60 ,0x00 ,0x00 ,0xaf ,0xdf ,0x00 ,0x00 ,0x00 ,0x00 ,0x03 ,0x0a ,0x00 ,0x00 ,0x01 ,0x07 ,0xff
 cabin_to_shaft = [0x25, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff]
 
-
-
 #websocket objects 
 wifi_cabin = None
 wifi_shaft = None
@@ -42,13 +40,9 @@ lops_shaft = [
     #bytearray([0x55, 0x03, 0x00, 0x00, 0x01, 0x01, 0x00, 0x01, 0x00, 0xff])
 ]
 cabin_to_tab = bytearray([0xd5, 0x00, 0x00, 0x00, 0x00, 0x64, 0x02, 0x00, 0x00, 0xff])  #Header, Call booking, Siren & downtime, CL, Emg, Battery,  charge, max_flr, update, footer (Totle floors count, LaFLiLo PWM, Update status, Footer)
-                           #  0xd5 ,0x00 ,0x00 ,0x00 ,0x00 ,0x64 ,0x00 ,0x00 ,0x00 ,0xff   
+   #  0xd5 ,0x00 ,0x00 ,0x00 ,0x00 ,0x64 ,0x00 ,0x00 ,0x00 ,0xff   
 
 # Data for Android Cabin
-LL_android_cabin_data_to = [
-    bytearray([0x65, 0x00, 0x09, 0x02, 0x00, 0xFF, 0xFF, 0xFF])   # 4th byte 1 RGB turned On 0 RGB turned off
-    #bytes([0x65, 0x00, 0x09, 0x02, 0x00, 0xFF, 0xFF, 0xFF])    #
-]
 LL_android_cabin_data =  bytearray([0x65, 0x00, 0x09, 0x02, 0x00, 0xFF, 0xFF, 0xFF])   # 4th byte 1 RGB turned On 0 RGB turned off
 RGB_android_cabin_dataC = bytearray([0x65, 0x05, 0x00, 0x00, 0x09, 0x00, 0x01, 0xff]) #Header, RGB-5, Timer, Bright, Color,  stay_0, stay_1, footer
 FanDatatoCab = bytearray([0x65, 0x04, 0x01, 0x32, 0x01, 0xFF, 0xFF, 0xFF]) #Header, Dev, FAN-1, Time, 0-off 15 to 100% bright, Dummey, Dummey, Footer  
@@ -67,9 +61,7 @@ os.makedirs(folder_name, exist_ok=True)
 
 with open(file_path, "w") as LOGFILE:
     LOGFILE.write("Log entry example\n")
-
 print(f"Log file created at: {file_path}")
-
 LOGFILE = open(file_path, "w")
 
 
@@ -89,14 +81,11 @@ def call_booking(call_type, floor_name, checked):
         "First Floor": 1,
         "Second Floor": 2,
         "Third Floor": 3}
-
     if floor_name not in floor_mapping:
         print(f"Invalid floor name: {floor_name}")
         LOGFILE.write(f"{datetime.now()} -- Invalid floor name: {floor_name} \n")
         return
-
     floor_number = floor_mapping[floor_name]
-    
     print(f"{call_type} Call Booked for ............ {floor_number}")
     result = "Pressed" if checked else "Release"
     LOGFILE.write(f"{datetime.now()} -- In UI {call_type} Call Button {result} for floor {floor_number} \n")
@@ -114,10 +103,8 @@ def call_booking(call_type, floor_name, checked):
                 data[floor][2] = 0x00  # Reset other floors
                 print(f"Updated lops_shaft floor [{floor}]: ", end="")
                 print(" ".join(f"0x{byte:02x}" for byte in data[floor]))
-                #wifi_shaft.send(data[floor])
-            
+                #wifi_shaft.send(data[floor]
             #window2.update_lidar_data(floor_number) #just to see the data is updating or not
-
     elif call_type == "COP": 
              
         if 0 <= floor_number <= len(lops_shaft)+1 and checked:
@@ -186,7 +173,6 @@ def run_websocket_client(url, client_name):
             wifi_cabin = ws
             #sendDataToCabin()
             #threading.Thread(target=sendDataToCabin).start()
- 
         print(f"{client_name} connection opened")
         LOGFILE.write(f"{datetime.now()} -- {client_name} connection opened \n")
 
@@ -198,7 +184,6 @@ def run_websocket_client(url, client_name):
         on_close=on_close,
     )
     ws.on_open = on_open
-
     # Running the WebSocket client
     ws.run_forever()
 
@@ -206,11 +191,12 @@ def shaft_brodcast_updater():
     global shaft_broad_cast
     #print("The updater  ....................................................",shaft_broad_cast)
     window2.check_update_brodcast_error(shaft_broad_cast)
-    window2.update_lidar_data(shaft_broad_cast[5])
+    window2.update_lidar_data(shaft_broad_cast[5], shaft_broad_cast[1])
     window2.change_data(shaft_broad_cast)
     #return shaft_broad_cast
 
 class AnimatedToggle(QCheckBox):
+
     def __init__(self, label, parent=None):
         super().__init__(parent)
         self.label = label
@@ -247,6 +233,12 @@ class AnimatedToggle(QCheckBox):
             self._bg_color = QColor("#FF0000")
         self._animation.start()
 
+    def semi_animation(self):
+        self._animation.stop()
+        self._animation.setEndValue(3)
+        self._bg_color = QColor("#fc03cf")
+        self._animation.start()
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -258,10 +250,15 @@ class AnimatedToggle(QCheckBox):
         painter.end()
 
     def set_state(self, on):
-        self.setChecked(on)  # This will update the toggle state
-        self.start_animation()
+        #print("The on : ", on)
+        if(on == 2):
+            self.semi_animation()
+        else :
+            self.setChecked(on)  # This will update the toggle state
+            self.start_animation()
 
 class LiftControlUI(QWidget):
+
     def __init__(self):
         super().__init__()
         
@@ -271,34 +268,70 @@ class LiftControlUI(QWidget):
         global shaft_broad_cast
         # Main layout for both panels
         main_layout = QHBoxLayout()
+
+        
+
+
         self.error_buttons = {}
         self.data_label = QLabel("Current Data: 0", self)
         connection_status_signal = pyqtSignal(bool)
-
+    
         # Create LOP and COP panels
         lop_panel = self.create_lop_panel()
         cop_panel = self.create_cop_panel()
         shaft_panel = self.create_shaft_panel()
         Error_panel = self.create_error_panel()
-        Data_panel = self.create_data_panel(shaft_broad_cast)
+        self.Data_panel = self.create_data_panel(shaft_broad_cast)
         # Add the panels to the main layout
+        
         main_layout.addWidget(lop_panel)
         main_layout.addWidget(cop_panel)
         main_layout.addWidget(shaft_panel)
         main_layout.addWidget(Error_panel)
 
-        outer_layout = QVBoxLayout()
-        outer_layout.addLayout(main_layout)
-        outer_layout.addWidget(Data_panel)
-        self.setLayout(outer_layout)
-        Device_panel = self.DerviceAvailablityPanel()
-        Door_panel = self.DoorAvailablityPanel()
-        Network_panel = self.NetworkAvailablityPanel()
-        outer_layout.addWidget(Device_panel)
-        outer_layout.addWidget(Door_panel)
-        outer_layout.addWidget(Network_panel)
-        self.setLayout(outer_layout)
-                    
+
+        # Define outer_layout and add main_container
+        """
+        main_container = QWidget(self)
+        main_container.setLayout(main_layout)
+        main_container.setFixedSize(6000, 4000)  # Set your desired fixed size here
+        self.outer_layout = QVBoxLayout()
+        self.outer_layout.addWidget(main_container)
+        self.outer_layout.addWidget(Data_panel)"""
+
+        self.outer_layout = QVBoxLayout()            
+        self.outer_layout.addLayout(main_layout)
+        self.outer_layout.addWidget(self.Data_panel)
+
+        self.toggle_button = QPushButton("Toggle Panels", self)
+        self.toggle_button.setStyleSheet(self.toggle_button_style())
+        self.toggle_button.setCheckable(True)
+        self.toggle_button.toggled.connect(lambda checked, :  self.hide_outer_layout(checked))
+        self.outer_layout.addWidget(self.toggle_button)
+
+        self.Device_panel = self.DerviceAvailablityPanel()
+        self.Door_panel = self.DoorAvailablityPanel()
+        self.Network_panel = self.NetworkAvailablityPanel()
+        self.MechLock_panel = self.MechLock_AvailablityPanel()
+        self.outer_layout.addWidget(self.Device_panel)
+        self.outer_layout.addWidget(self.Door_panel)
+        self.outer_layout.addWidget(self.Network_panel)
+        self.outer_layout.addWidget(self.MechLock_panel)
+        self.setLayout(self.outer_layout)
+
+    def chechched(self, checked):
+        print("cheched", checked)
+
+    def hide_outer_layout(self, visibility):
+            self.toggle_panel_visibility(self.Data_panel, visibility)
+            self.toggle_panel_visibility(self.Device_panel, visibility)
+            self.toggle_panel_visibility(self.Door_panel, visibility)
+            self.toggle_panel_visibility(self.Network_panel, visibility)
+            self.toggle_panel_visibility(self.MechLock_panel, visibility)
+        
+    def toggle_panel_visibility(self, panel, visible):
+        panel.setVisible(visible)
+            
     def create_lop_panel(self):
         # Create a group box for the LOP Panel
         lop_box = QGroupBox("LOP PANEL")
@@ -579,12 +612,12 @@ class LiftControlUI(QWidget):
             
         #print(" ".join(f"0x{byte:02x}" for byte in data))
     
-    def update_lidar_data(self, data):
+    def update_lidar_data(self, data, current_floor):
         global lidar_data
         lidar_data = int(data, 16) 
-        self.data_label.setText(f"Lidar Value: {lidar_data} ")
-        LOGFILE.write(str(f"{datetime.now()} -- Lidar Value: {lidar_data} \n"))
-        #self.data_label.setText(f"<span style='color: yellow; font-weight: bold;'>Lidar Value: {lidar_data} place</span>")
+        current_floor = current_floor.replace("0x", "").replace("x", "")
+        self.data_label.setText(f"Lidar Value: {lidar_data}  Lift Current Floor: {current_floor}")
+        LOGFILE.write(str(f"{datetime.now()} -- Lidar Value: {lidar_data}   Lift Current Floor: {current_floor} \n"))
         return lidar_data
 
     def create_data_panel(self, data):
@@ -596,25 +629,11 @@ class LiftControlUI(QWidget):
         global shaft_broad_cast
         global  lidar_data #self.update_lidar_data() #100 #data[5]
         print("Lidar Val is .....................", lidar_data)
-    # Randomly update global_data to simulate changes
-        #lidar_val   = random.randint(0, 100)
-
-        #self.setWindowTitle("Global Data Error Monitor")
-        self.data_label = QLabel((f"Lidar Value: {lidar_data}   "),self)
-        #self.data_label.setText(f"Lidar Value: {lidar_data} place")
-        err_button = QPushButton("Lidar Val" + "")
-        """self.error_label = QLabel("", self)
-        self.error_label.setStyleSheet("color: red; font-weight: bold;")"""
-
-        #layout = QVBoxLayout()
+        self.data_label = QLabel((f"Lidar Value: {lidar_data}      Lift Current Floor: {lidar_data}"), self)
         data_layout.addWidget(self.data_label)
         data_box.setLayout(data_layout)
         data_box.setStyleSheet(self.panel_style())
-        data_box.setStyleSheet("color: Yellow; font-weight: bold;")
-        #data_box.setStyleSheet("border: 2px solid #00ADB5; border-radius: 8px;margin-top: 8px; padding: 8px;font-weight: bold;color: white;background-color: #393E46")
-        #self.data_label.setText(f"<span style='color: yellow; font-weight: bold;'>Lidar Value: {lidar_data} place</span>")
-        #self.data_label.setText(f"Lidar Value: {lidar_data} place")
-        # Set font size, color, and style
+        data_box.setStyleSheet("color: Yellow; font-weight: bold; font-size: 10px")
         return data_box
 
     def create_error_panel(self):
@@ -692,20 +711,29 @@ class LiftControlUI(QWidget):
                 row += 1
 
         toggle_box.setLayout(toggle_layout)
-        toggle_box.setStyleSheet("color: White; font-weight: bold;")
+        toggle_box.setStyleSheet("color: White; font-weight: bold; font-size: 10px")
         return toggle_box
     
     def set_toggle_state(self, label, state):
+        print(label, state)
         if label in self.Device_toggles:
             self.Device_toggles[label].set_state(state)
         elif label in self.Door_switch_toggles:
             self.Door_switch_toggles[label].set_state(state)
         elif label in self.Network_switch_toggles:
             self.Network_switch_toggles[label].set_state(state)
+        elif label in self.Mechanical_lock_toggles:
+            if(state == "00") :
+                self.Mechanical_lock_toggles[label].set_state(False)
+            elif(state == "10"):
+                self.Mechanical_lock_toggles[label].set_state(True)
+            elif(state == "11"):
+                self.Mechanical_lock_toggles[label].set_state(2)
+            else:
+                self.Mechanical_lock_toggles[label].set_state(state)
 
     def Update_Device_toggles(self, data, data_type):
-        
-        
+       
         if data_type == "Devices" :
             data.reverse()
             print("Binary Data Here:",data_type, data)
@@ -721,12 +749,12 @@ class LiftControlUI(QWidget):
             self.set_toggle_state("Child Lock", data[5] == '1')
             self.set_toggle_state("Emergency Cabin", data[6] == '1')
             self.set_toggle_state("Device OTA", data[7] == '1')
-            
+                        
         elif data_type == "Door_Switch" :
             data.reverse()
             print("Binary Data Here:",data_type, data)
             LOGFILE.write(str(f"{datetime.now()} -- {data_type} Binary Data Here: {data} \n"))
-            LOGFILE.write(f"{datetime.now()} -- Door G {data[0]} Door 1 {data[1]} Door 2 {data[2]} Door 3 {data[3]} \n")
+            LOGFILE.write(f"{datetime.now()} -- Door_G : {data[0]} Door_1 : {data[1]} Door_2 : {data[2]} Door_3 : {data[3]} \n")
             # Update toggles based on the incoming data
             self.set_toggle_state("Door G", data[0] == '1')  # Is power device is off = 1 then power is on 
             self.set_toggle_state("Door 1", data[1] == '1')
@@ -737,23 +765,69 @@ class LiftControlUI(QWidget):
             data.reverse()
             print("Binary Data Here:",data_type, data)
             LOGFILE.write(str(f"{datetime.now()} -- {data_type} Binary Data Here: {data} \n"))
-            LOGFILE.write(f"{datetime.now()} -- Solinoid G {data[0]} Solinoid 1 {data[1]} Solinoid 2 {data[2]} Solinoid 3 {data[3]} \n")
+            LOGFILE.write(f"{datetime.now()} -- Solenoid_G : {data[0]} Solenoid_1 : {data[1]} Solenoid_2 : {data[2]} Solenoid_3 : {data[3]} \n")
             # Update toggles based on the incoming data
-            self.set_toggle_state("Solinoid G", data[0] == '0')  # Is power device is off = 1 then power is on 
-            self.set_toggle_state("Solinoid 1", data[1] == '0')
-            self.set_toggle_state("Solinoid 2", data[2] == '1')
-            self.set_toggle_state("Solinoid 3", data[3] == '1')
+            self.set_toggle_state("Solenoid G", data[0] == '0')  # Is power device is off = 1 then power is on 
+            self.set_toggle_state("Solenoid 1", data[1] == '0')
+            self.set_toggle_state("Solenoid 2", data[2] == '1')
+            self.set_toggle_state("Solenoid 3", data[3] == '1')
         elif data_type == "Network" :
             data.reverse()
             print("Binary Data Here:",data_type, data)
             LOGFILE.write(str(f"{datetime.now()} -- {data_type} Binary Data Here: {data} \n"))
-            LOGFILE.write(f"{datetime.now()} -- Solinoid G {data[0]} Solinoid 1 {data[1]} Solinoid 2 {data[2]} Solinoid 3 {data[3]} \n")
+            LOGFILE.write(f"{datetime.now()} -- Cabin : {data[0]} LOP_0 : {data[1]} LOP_1 : {data[2]} LOP_2 : {data[3]} \n")
             # Update toggles based on the incoming data
             self.set_toggle_state("Cabin", data[0] == '1')  # Is power device is off = 1 then power is on 
             self.set_toggle_state("LOP 0", data[1] == '1')
             self.set_toggle_state("LOP 1", data[2] == '1')
             self.set_toggle_state("LOP 2", data[3] == '1')
-            self.set_toggle_state("LOP 3", data[4] == '1')        
+            self.set_toggle_state("LOP 3", data[4] == '1')
+            #self.set_toggle_state("LOP 3", data[4] == '1') 
+        
+        elif data_type == "LL" :
+            print("Binary Data Here:",data_type, data)
+            LOGFILE.write(str(f"{datetime.now()} -- {data_type} Binary Data Here: {data} \n"))
+            LOGFILE.write(f"{datetime.now()} -- Landing Lever : {data} \n")
+            self.set_toggle_state("LL", data == '1')  # Is power device is off = 1 then power is on
+
+        elif data_type == "EVO" :
+            print("Binary Data Here:",data_type, data)
+            LOGFILE.write(str(f"{datetime.now()} -- {data_type} Binary Data Here: {data} \n"))
+            LOGFILE.write(f"{datetime.now()} -- EVO : {data} \n")
+            self.set_toggle_state("EVO", data == '1')  # Is power device is off = 1 then power is on 
+        
+        elif data_type == "SOS" :
+            print("Binary Data Here:",data_type, data)
+            LOGFILE.write(str(f"{datetime.now()} -- {data_type} Binary Data Here: {data} \n"))
+            LOGFILE.write(f"{datetime.now()} -- SOS : {data} \n")
+            self.set_toggle_state("SOS", data == '1')  # Is power device is off = 1 then power is on 
+
+        elif data_type == "ML" :
+            #data = ['0', '0', '1', '1', '0', '1', '1', '1']
+            data.reverse()
+            print("Binary Data Here:",data_type, data)
+            LOGFILE.write(str(f"{datetime.now()} -- {data_type} Binary Data Here: {data} \n"))
+            ML_G = data[0] + data[1]
+            ML_1 = data[2] + data[3]
+            ML_2 = data[4] + data[5]
+            ML_3 = data[6] + data[7]
+            LOGFILE.write(f"{datetime.now()} -- ML_G : {ML_G}, ML_1 : {ML_1}, ML_2 : {ML_2}, ML_3 : {ML_3} \n")
+            self.set_toggle_state("ML G",  ML_G)  # Is power device is off = 1 then power is on 
+            self.set_toggle_state("ML 1", ML_1)  # Is power device is off = 1 then power is on 
+            self.set_toggle_state("ML 2", ML_2)
+            self.set_toggle_state("ML 3", ML_3)
+        
+        elif data_type == "LOP Booked" :
+            print("Binary Data Here:",data_type, data)
+            LOGFILE.write(str(f"{datetime.now()} -- {data_type} Binary Data Here: {data} \n"))
+            LOGFILE.write(f"{datetime.now()} -- LOP Booked : {data} \n")
+            self.set_toggle_state("LOP Booked", data == '1')
+
+        elif data_type == "COP Booked" :
+            print("Binary Data Here:",data_type, data)
+            LOGFILE.write(str(f"{datetime.now()} -- {data_type} Binary Data Here: {data} \n"))
+            LOGFILE.write(f"{datetime.now()} -- COP Booked : {data} \n")
+            self.set_toggle_state("COP Booked", data == '1')
 
     def change_data(self, data):
         # This function is called periodically to change the data and update toggles
@@ -762,6 +836,15 @@ class LiftControlUI(QWidget):
         Door_switch_data = data[9]
         Door_Lock_data = data[8]
         Network_data = data[14]
+        LL_data = data[6]
+        Evo_data = data[12]
+        SOS_data = data[11]
+        ML_data = data[10]
+        LOP_Booked_data = data[2]
+        COP_Booked_data = data[7]
+
+        toggle_data = COP_Booked_data.replace("0x", "").replace("x", "")
+        self.Update_Device_toggles(str(toggle_data), "COP Booked")
 
         cleaned_Device_hex_data = Device_data.replace("0x", "").replace("x", "")
         binary_data = ''.join(format(int(char, 16), '04b') for char in cleaned_Device_hex_data)
@@ -779,9 +862,29 @@ class LiftControlUI(QWidget):
         self.Update_Device_toggles(toggle_data, "Door_Lock")
 
         cleaned_Network_hex_data = Network_data.replace("0x", "").replace("x", "")
-        binary_data = ''.join(format(int(char, 16), '04b') for char in cleaned_Network_hex_data)
+        binary_data = ''.join(format(int(char, 16), '05b') for char in cleaned_Network_hex_data)
         toggle_data = list(binary_data[:8])  # Convert the first 8 bits to a list of '1' and '0' strings  
         self.Update_Device_toggles(toggle_data, "Network")  # Update the toggle switches with binary data
+
+        toggle_data = LL_data.replace("0x", "").replace("x", "")
+        self.Update_Device_toggles(str(toggle_data), "LL")
+
+        toggle_data = Evo_data.replace("0x", "").replace("x", "")
+        self.Update_Device_toggles(str(toggle_data), "EVO")
+
+        toggle_data = SOS_data.replace("0x", "").replace("x", "")
+        self.Update_Device_toggles(str(toggle_data), "SOS")
+
+        cleaned_ML_hex_data = ML_data.replace("0x", "").replace("x", "")
+        binary_data = ''.join(format(int(char, 16), '08b') for char in cleaned_ML_hex_data)
+        toggle_data = list(binary_data)
+        self.Update_Device_toggles(toggle_data, "ML")
+
+        toggle_data = LOP_Booked_data.replace("0x", "").replace("x", "")
+        self.Update_Device_toggles(str(toggle_data), "LOP Booked")
+
+        
+
 
     def DoorAvailablityPanel(self):
         toggle_box = QGroupBox("Door Availability Panel")
@@ -793,10 +896,10 @@ class LiftControlUI(QWidget):
             "Door 1":AnimatedToggle("Door 1"),
             "Door 2":AnimatedToggle("Door 2"),
             "Door 3":AnimatedToggle("Door 3"),
-            "Solinoid G":AnimatedToggle("Solinoid G"),
-            "Solinoid 1":AnimatedToggle("Solinoid 1"),
-            "Solinoid 2":AnimatedToggle("Solinoid 2"),
-            "Solinoid 3":AnimatedToggle("Solinoid 3"),
+            "Solenoid G":AnimatedToggle("Solenoid G"),
+            "Solenoid 1":AnimatedToggle("Solenoid 1"),
+            "Solenoid 2":AnimatedToggle("Solenoid 2"),
+            "Solenoid 3":AnimatedToggle("Solenoid 3"),
         }
         #toggle_layout.setHorizontalSpacing(150)  # Adjust this value as needed for more space between columns
         #toggle_layout.setVerticalSpacing(15)
@@ -816,7 +919,7 @@ class LiftControlUI(QWidget):
                 row += 1
 
         toggle_box.setLayout(toggle_layout)
-        toggle_box.setStyleSheet("color: White; font-weight: bold;")
+        toggle_box.setStyleSheet("color: White; font-weight: bold; font-size: 10px")
         return toggle_box  
      
     def NetworkAvailablityPanel(self):
@@ -832,8 +935,8 @@ class LiftControlUI(QWidget):
             "LOP 3":AnimatedToggle("LOP 3"),          
             "LL":AnimatedToggle("LL"),
             "EVO":AnimatedToggle("EVO"),
-            #"Solinoid 2":AnimatedToggle("Solinoid 2"),
-            #"Solinoid 3":AnimatedToggle("Solinoid 3"),
+            "SOS":AnimatedToggle("SOS"),
+            #"Solenoid 3":AnimatedToggle("Solenoid 3"),
         }
         #toggle_layout.setHorizontalSpacing(150)  # Adjust this value as needed for more space between columns
         #toggle_layout.setVerticalSpacing(15)
@@ -853,10 +956,45 @@ class LiftControlUI(QWidget):
                 row += 1
 
         toggle_box.setLayout(toggle_layout)
-        toggle_box.setStyleSheet("color: White; font-weight: bold;")
+        toggle_box.setStyleSheet("color: White; font-weight: bold; font-size: 10px")
         return toggle_box
     
-    def lop_data_button(self, type, btn, floor):   #ml_states = ["Door Switch", "Solenoid", "ML Open", "ML Close", "ML Semi"]
+    def MechLock_AvailablityPanel(self):
+        toggle_box = QGroupBox("Mechanical Availability Panel")
+        toggle_layout = QGridLayout()  # Use QGridLayout for grid arrangement
+
+        # Define the labels for each toggle switch
+        self.Mechanical_lock_toggles = {
+            "ML G":AnimatedToggle("ML G"),
+            "ML 1":AnimatedToggle("ML 1"),
+            "ML 2":AnimatedToggle("ML 2"),
+            "ML 3":AnimatedToggle("ML 3"),   
+            "LOP Booked":AnimatedToggle("LOP Booked"),
+            "COP Booked":AnimatedToggle("COP Booked"),
+            #"SOS":AnimatedToggle("SOS"),
+            #"Solenoid 3":AnimatedToggle("Solenoid 3"),
+        }
+        toggle_layout.setSpacing(10)
+        row = 0
+        col = 0
+        for label, toggle in self.Mechanical_lock_toggles.items():
+            label_widget = QLabel(label)
+            
+            # Add the label and toggle to the grid layout
+            toggle_layout.addWidget(label_widget, row, col * 2+1)  # Label on the left side
+            toggle_layout.addWidget(toggle, row, col * 2 )    # Toggle on the right side
+
+            col += 1
+            if col == 4:  # Move to the next row after three toggles
+                col = 0
+                row += 1
+
+        toggle_box.setLayout(toggle_layout)
+        toggle_box.setStyleSheet("color: White; font-weight: bold; font-size: 10px")
+        return toggle_box
+    
+    def lop_data_button(self, type, btn, floor):  
+        #ml_states = ["Door Switch", "Solenoid", "ML Open", "ML Close", "ML Semi"]
         #print(" ".join(f"0x{byte:02x}" for byte in lops_shaft[floor]))
         if(floor < len(lops_shaft)) :
 
@@ -1077,12 +1215,10 @@ udp_thread.start()
 
 # Run the application
 app = QApplication(sys.argv)
-#window = MainWindow()
 window2 = LiftControlUI()
 window2.setStyleSheet("background-color: #222831;")
-#window.show()
 window2.show()
-# Start the PyQt event loop
-
 sys.exit(app.exec())
 
+
+        
